@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: atrium
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5s
+
+server:
+  port: ${SERVER_PORT:8080}
+
+atrium:
+  lobby:
+    room-code-length: 6
+    default-max-players: 8
+    absolute-max-players: 32
+    max-name-length: 32
+    max-avatar-length: 256
+    disconnect-grace-period-seconds: 60
+    lobby-inactive-ttl-seconds: 7200      # 2 hours
+    in-game-inactive-ttl-seconds: 259200  # 3 days
+    roomless-player-ttl-seconds: 7200     # 2 hours
+    cleanup-interval-seconds: 300         # 5 minutes
+    websocket-path: /api/lobby/ws
+    cors-allowed-origins:
+      - "*"
+
+logging:
+  level:
+    org.atrium: INFO
+

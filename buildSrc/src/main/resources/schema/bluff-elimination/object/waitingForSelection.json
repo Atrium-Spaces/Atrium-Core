@@ -1,8 +1,0 @@
-{
-	"uuid": {
-		"type": "uuid"
-	},
-	"selection": {
-		"type": "integer"
-	}
-}

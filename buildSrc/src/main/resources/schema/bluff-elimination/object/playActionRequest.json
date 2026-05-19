@@ -1,9 +1,0 @@
-{
-	"action": {
-		"type": "Action"
-	},
-	"target": {
-		"optional": true,
-		"type": "uuid"
-	}
-}

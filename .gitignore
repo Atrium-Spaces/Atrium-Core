@@ -1,39 +1,23 @@
-# gradle
-
-.gradle/
-build/
-out/
-classes/
-
-# eclipse
-
-*.launch
-
-# idea
-
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
 .idea/
 *.iml
-*.ipr
-*.iws
-
-# vscode
-
-.settings/
 .vscode/
-bin/
-.classpath
-.project
 
-# macos
+# --- Java / Gradle ---
+backend/build/
+backend/.gradle/
+backend/out/
+backend/bin/
+backend/src/main/resources/static/
+*.class
+*.log
 
-*.DS_Store
-
-**/resources/static/
-generated
-game.ts
-game.component.html
-game.component.ts
-game-settings.component.html
-game-settings.component.ts
-BaseGameProperties.java
-GameStateHelper.java
+# --- Node / Angular ---
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/coverage/
+frontend/.gitignore
+npm-debug.log*

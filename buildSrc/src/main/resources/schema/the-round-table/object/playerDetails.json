@@ -1,9 +1,0 @@
-{
-	"uuid": {
-		"type": "uuid"
-	},
-	"visibleRoles": {
-		"array": true,
-		"type": "Character"
-	}
-}
