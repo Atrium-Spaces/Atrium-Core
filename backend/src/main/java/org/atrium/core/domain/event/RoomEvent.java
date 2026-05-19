@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import org.atrium.core.api.dto.PlayerView;
 import org.atrium.core.api.dto.RoomView;
+import org.atrium.core.domain.constant.AtriumConstants;
 import org.atrium.core.domain.model.RoomState;
 import org.jspecify.annotations.Nullable;
 
@@ -19,22 +20,19 @@ import java.util.UUID;
  * {@link #emittedAt()} so clients can dedupe / reconcile out-of-order delivery without
  * the lobby needing per-channel sequence numbers.
  */
-@JsonTypeInfo(
-	use = JsonTypeInfo.Id.NAME,
-	include = JsonTypeInfo.As.PROPERTY,
-	property = "type")
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
-	@JsonSubTypes.Type(value = RoomEvent.PlayerJoined.class, name = "playerJoined"),
-	@JsonSubTypes.Type(value = RoomEvent.PlayerLeft.class, name = "playerLeft"),
-	@JsonSubTypes.Type(value = RoomEvent.PlayerKicked.class, name = "playerKicked"),
-	@JsonSubTypes.Type(value = RoomEvent.PlayerUpdated.class, name = "playerUpdated"),
-	@JsonSubTypes.Type(value = RoomEvent.PlayerDisconnected.class, name = "playerDisconnected"),
-	@JsonSubTypes.Type(value = RoomEvent.PlayerReconnected.class, name = "playerReconnected"),
-	@JsonSubTypes.Type(value = RoomEvent.HostChanged.class, name = "hostChanged"),
-	@JsonSubTypes.Type(value = RoomEvent.SettingsChanged.class, name = "settingsChanged"),
-	@JsonSubTypes.Type(value = RoomEvent.StateChanged.class, name = "stateChanged"),
-	@JsonSubTypes.Type(value = RoomEvent.RoomDeleted.class, name = "roomDeleted"),
-	@JsonSubTypes.Type(value = RoomEvent.Snapshot.class, name = "snapshot"),
+	@JsonSubTypes.Type(value = RoomEvent.PlayerJoined.class, name = AtriumConstants.RoomEventTypes.PLAYER_JOINED),
+	@JsonSubTypes.Type(value = RoomEvent.PlayerLeft.class, name = AtriumConstants.RoomEventTypes.PLAYER_LEFT),
+	@JsonSubTypes.Type(value = RoomEvent.PlayerKicked.class, name = AtriumConstants.RoomEventTypes.PLAYER_KICKED),
+	@JsonSubTypes.Type(value = RoomEvent.PlayerUpdated.class, name = AtriumConstants.RoomEventTypes.PLAYER_UPDATED),
+	@JsonSubTypes.Type(value = RoomEvent.PlayerDisconnected.class, name = AtriumConstants.RoomEventTypes.PLAYER_DISCONNECTED),
+	@JsonSubTypes.Type(value = RoomEvent.PlayerReconnected.class, name = AtriumConstants.RoomEventTypes.PLAYER_RECONNECTED),
+	@JsonSubTypes.Type(value = RoomEvent.HostChanged.class, name = AtriumConstants.RoomEventTypes.HOST_CHANGED),
+	@JsonSubTypes.Type(value = RoomEvent.SettingsChanged.class, name = AtriumConstants.RoomEventTypes.SETTINGS_CHANGED),
+	@JsonSubTypes.Type(value = RoomEvent.StateChanged.class, name = AtriumConstants.RoomEventTypes.STATE_CHANGED),
+	@JsonSubTypes.Type(value = RoomEvent.RoomDeleted.class, name = AtriumConstants.RoomEventTypes.ROOM_DELETED),
+	@JsonSubTypes.Type(value = RoomEvent.Snapshot.class, name = AtriumConstants.RoomEventTypes.SNAPSHOT),
 })
 public sealed interface RoomEvent {
 
@@ -42,43 +40,43 @@ public sealed interface RoomEvent {
 
 	Instant emittedAt();
 
-	@JsonTypeName("playerJoined")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.PLAYER_JOINED)
 	record PlayerJoined(String roomCode, Instant emittedAt, PlayerView player) implements RoomEvent {
 	}
 
-	@JsonTypeName("playerLeft")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.PLAYER_LEFT)
 	record PlayerLeft(String roomCode, Instant emittedAt, UUID publicId, @Nullable String reason) implements RoomEvent {
 	}
 
-	@JsonTypeName("playerKicked")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.PLAYER_KICKED)
 	record PlayerKicked(String roomCode, Instant emittedAt, UUID publicId) implements RoomEvent {
 	}
 
-	@JsonTypeName("playerUpdated")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.PLAYER_UPDATED)
 	record PlayerUpdated(String roomCode, Instant emittedAt, PlayerView player) implements RoomEvent {
 	}
 
-	@JsonTypeName("playerDisconnected")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.PLAYER_DISCONNECTED)
 	record PlayerDisconnected(String roomCode, Instant emittedAt, UUID publicId) implements RoomEvent {
 	}
 
-	@JsonTypeName("playerReconnected")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.PLAYER_RECONNECTED)
 	record PlayerReconnected(String roomCode, Instant emittedAt, UUID publicId) implements RoomEvent {
 	}
 
-	@JsonTypeName("hostChanged")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.HOST_CHANGED)
 	record HostChanged(String roomCode, Instant emittedAt, UUID newHost) implements RoomEvent {
 	}
 
-	@JsonTypeName("settingsChanged")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.SETTINGS_CHANGED)
 	record SettingsChanged(String roomCode, Instant emittedAt, RoomView room) implements RoomEvent {
 	}
 
-	@JsonTypeName("stateChanged")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.STATE_CHANGED)
 	record StateChanged(String roomCode, Instant emittedAt, RoomState newState) implements RoomEvent {
 	}
 
-	@JsonTypeName("roomDeleted")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.ROOM_DELETED)
 	record RoomDeleted(String roomCode, Instant emittedAt) implements RoomEvent {
 	}
 
@@ -86,8 +84,7 @@ public sealed interface RoomEvent {
 	 * Sent only over the WebSocket on subscribe (never broadcast through Redis) — gives
 	 * a new subscriber a complete picture of the room without a separate REST call.
 	 */
-	@JsonTypeName("snapshot")
+	@JsonTypeName(AtriumConstants.RoomEventTypes.SNAPSHOT)
 	record Snapshot(String roomCode, Instant emittedAt, RoomView room) implements RoomEvent {
 	}
 }
-

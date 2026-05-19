@@ -6,7 +6,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A player known to the lobby.
+ * A player known to Atrium.
  *
  * <p>The pair ({@link #publicId}, {@link #secretId}) is the player's identity. The
  * public id is shared with everyone else in the room; the secret id is known only to
@@ -22,19 +22,12 @@ import java.util.UUID;
  * @param publicId     identity shared with other clients
  * @param secretId     identity proving "this is me" to the server
  * @param name         display name (1–{@code maxNameLength} characters)
- * @param avatar       free-form avatar string (URL, emoji, iconify id — opaque to the lobby)
+ * @param avatar       free-form avatar string (URL, emoji, iconify id — opaque to Atrium)
  * @param roomCode     code of the room this player has currently joined, or {@code null}
  * @param status       {@link PlayerStatus#ACTIVE} or {@link PlayerStatus#DISCONNECTED}
  * @param lastActiveAt last time the player did anything; drives the inactive-player TTL
  */
-public record Player(
-	UUID publicId,
-	UUID secretId,
-	String name,
-	String avatar,
-	@Nullable String roomCode,
-	PlayerStatus status,
-	Instant lastActiveAt) {
+public record Player(UUID publicId, UUID secretId, String name, String avatar, @Nullable String roomCode, PlayerStatus status, Instant lastActiveAt) {
 
 	public Player withRoomCode(@Nullable String newRoomCode) {
 		return new Player(publicId, secretId, name, avatar, newRoomCode, status, Instant.now());
@@ -52,4 +45,3 @@ public record Player(
 		return new Player(publicId, secretId, name, avatar, roomCode, status, Instant.now());
 	}
 }
-

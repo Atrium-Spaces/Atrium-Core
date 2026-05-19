@@ -11,25 +11,24 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * Translates lobby-layer exceptions into JSON error responses.
+ * Translates exceptions into JSON error responses.
  */
 @Slf4j
 @RestControllerAdvice
-public class LobbyExceptionHandler {
+public class AtriumExceptionHandler {
 
-	@ExceptionHandler(LobbyException.class)
-	public ResponseEntity<Map<String, Object>> handleLobby(LobbyException e) {
-		log.debug("Lobby exception {}: {}", e.status(), e.getMessage());
-		return ResponseEntity.status(e.status()).body(body(e.status(), e.getMessage()));
+	@ExceptionHandler(AtriumException.class)
+	public ResponseEntity<Map<String, Object>> handleAtrium(AtriumException e) {
+		log.debug("Atrium exception {}: {}", e.status, e.getMessage());
+		return ResponseEntity.status(e.status).body(body(e.status, e.getMessage()));
 	}
 
 	@ExceptionHandler(WebExchangeBindException.class)
 	public ResponseEntity<Map<String, Object>> handleValidation(WebExchangeBindException e) {
-		String message = e.getFieldErrors().stream()
+		return ResponseEntity.badRequest().body(body(HttpStatus.BAD_REQUEST, e.getFieldErrors().stream()
 			.map(error -> error.getField() + ": " + error.getDefaultMessage())
 			.reduce((left, right) -> left + "; " + right)
-			.orElse("Validation failed");
-		return ResponseEntity.badRequest().body(body(HttpStatus.BAD_REQUEST, message));
+			.orElse("Validation failed")));
 	}
 
 	@ExceptionHandler(IllegalArgumentException.class)
@@ -42,7 +41,7 @@ public class LobbyExceptionHandler {
 			"timestamp", Instant.now().toString(),
 			"status", status.value(),
 			"error", status.getReasonPhrase(),
-			"message", message);
+			"message", message
+		);
 	}
 }
-

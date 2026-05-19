@@ -5,11 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 /**
- * Request body for {@code POST /api/lobby/rooms/{code}/kick}.
+ * Request body for {@code POST /api/atrium/rooms/{code}/kick}.
  */
-public record KickPlayerRequest(
-	@NotNull UUID publicId,
-	@NotNull UUID secretId,
-	@NotNull UUID targetPublicId) {
+public record KickPlayerRequest(@NotNull UUID publicId, @NotNull UUID secretId, @NotNull UUID targetPublicId) {
 }
-

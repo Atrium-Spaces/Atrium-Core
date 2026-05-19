@@ -2,18 +2,18 @@ package org.atrium.core.domain.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
-import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
-
-import org.atrium.core.api.error.LobbyException;
-import org.atrium.core.autoconfigure.LobbyProperties;
+import org.atrium.core.api.error.AtriumException;
+import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.domain.model.Player;
 import org.atrium.core.domain.model.PlayerStatus;
 import org.atrium.core.domain.model.Room;
 import org.atrium.core.redis.repository.PlayerRepository;
 import org.atrium.core.redis.repository.RoomRepository;
+import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -36,9 +36,7 @@ public class PlayerService {
 
 	private final PlayerRepository playerRepository;
 	private final RoomRepository roomRepository;
-	private final LobbyProperties properties;
-
-	// ---- identity ----------------------------------------------------------------------------
+	private final AtriumProperties properties;
 
 	/**
 	 * Authenticate or freshly mint a player identity from a status request.
@@ -48,71 +46,52 @@ public class PlayerService {
 	 * identity is allocated; the result's {@link Player#publicId()} /
 	 * {@link Player#secretId()} are what the caller must persist as cookies.
 	 */
-	public Mono<IdentityResult> ensureIdentity(
-		@Nullable UUID publicId,
-		@Nullable UUID secretId,
-		@Nullable String requestedName,
-		@Nullable String requestedAvatar) {
+	public Mono<IdentityResult> ensureIdentity(@Nullable UUID publicId, @Nullable UUID secretId, @Nullable String requestedName, @Nullable String requestedAvatar) {
 		if (publicId == null || secretId == null) {
 			return Mono.just(new IdentityResult(mintFresh(requestedName, requestedAvatar), true));
+		} else {
+			return playerRepository.findById(publicId)
+				.flatMap(storedPlayer -> {
+					if (!storedPlayer.secretId().equals(secretId)) {
+						log.debug("Secret id mismatch for public id {} — allocating fresh identity", publicId);
+						return Mono.just(new IdentityResult(mintFresh(requestedName, requestedAvatar), true));
+					}
+
+					Player updatedPlayer = storedPlayer.touched();
+
+					if (requestedName != null || requestedAvatar != null) {
+						String name = cleanName(requestedName != null ? requestedName : storedPlayer.name());
+						String avatar = cleanAvatar(requestedAvatar != null ? requestedAvatar : storedPlayer.avatar());
+						updatedPlayer = updatedPlayer.withProfile(name, avatar);
+					}
+
+					return playerRepository.save(updatedPlayer).map(savedPlayer -> new IdentityResult(savedPlayer, false));
+				})
+				.switchIfEmpty(Mono.just(new IdentityResult(mintFresh(requestedName, requestedAvatar), true)))
+				.flatMap(result -> result.freshIdentity() ? playerRepository.save(result.player()).map(saved -> new IdentityResult(saved, true)) : Mono.just(result));
 		}
-		return playerRepository.findById(publicId)
-			.flatMap(existing -> {
-				if (!existing.secretId().equals(secretId)) {
-					log.debug("Secret id mismatch for public id {} — allocating fresh identity", publicId);
-					return Mono.just(new IdentityResult(mintFresh(requestedName, requestedAvatar), true));
-				}
-				Player updated = existing.touched();
-				if (requestedName != null || requestedAvatar != null) {
-					String name = sanitiseName(requestedName != null ? requestedName : existing.name());
-					String avatar = sanitiseAvatar(requestedAvatar != null ? requestedAvatar : existing.avatar());
-					updated = updated.withProfile(name, avatar);
-				}
-				return playerRepository.save(updated).map(saved -> new IdentityResult(saved, false));
-			})
-			.switchIfEmpty(Mono.just(new IdentityResult(mintFresh(requestedName, requestedAvatar), true)))
-			.flatMap(result -> result.freshIdentity()
-				? playerRepository.save(result.player()).map(saved -> new IdentityResult(saved, true))
-				: Mono.just(result));
 	}
 
 	private Player mintFresh(@Nullable String requestedName, @Nullable String requestedAvatar) {
-		UUID publicId = UUID.randomUUID();
-		UUID secretId = UUID.randomUUID();
-		String name = sanitiseName(requestedName != null ? requestedName : "Player-" + publicId.toString().substring(0, 4));
-		String avatar = sanitiseAvatar(requestedAvatar != null ? requestedAvatar : "");
-		return new Player(publicId, secretId, name, avatar, null, PlayerStatus.ACTIVE, java.time.Instant.now());
+		final UUID publicId = UUID.randomUUID();
+		final UUID secretId = UUID.randomUUID();
+		final String name = cleanName(requestedName != null ? requestedName : "Player-" + publicId.toString().substring(0, 4));
+		final String avatar = cleanAvatar(requestedAvatar != null ? requestedAvatar : "");
+		return new Player(publicId, secretId, name, avatar, null, PlayerStatus.ACTIVE, Instant.now());
 	}
-
-	// ---- authentication ----------------------------------------------------------------------
 
 	public Mono<Player> authenticate(UUID publicId, UUID secretId) {
 		return playerRepository.findById(publicId)
-			.switchIfEmpty(Mono.error(LobbyException.playerNotFound()))
-			.flatMap(player -> player.secretId().equals(secretId)
-				? Mono.just(player)
-				: Mono.error(LobbyException.badCredentials()));
+			.switchIfEmpty(Mono.error(AtriumException.playerNotFound()))
+			.flatMap(player -> player.secretId().equals(secretId) ? Mono.just(player) : Mono.error(AtriumException.badCredentials()));
 	}
 
-	// ---- profile -----------------------------------------------------------------------------
-
 	public Mono<Player> updateProfile(UUID publicId, UUID secretId, String name, String avatar) {
-		String sanitisedName = sanitiseName(name);
-		String sanitisedAvatar = sanitiseAvatar(avatar);
 		return authenticate(publicId, secretId)
-			.map(player -> player.withProfile(sanitisedName, sanitisedAvatar))
+			.map(player -> player.withProfile(cleanName(name), cleanAvatar(avatar)))
 			.flatMap(playerRepository::save);
 	}
 
-	public Mono<Player> save(Player player) {
-		return playerRepository.save(player);
-	}
-
-	public Mono<Void> delete(UUID publicId) {
-		return playerRepository.delete(publicId);
-	}
-
-	// ---- room index lookup (with self-repair) ------------------------------------------------
 
 	/**
 	 * Return the room the given player is currently in, repairing the cached index if
@@ -123,21 +102,20 @@ public class PlayerService {
 	public Mono<Room> resolveRoom(UUID publicId) {
 		return playerRepository.findById(publicId)
 			.flatMap(player -> {
-				String cachedCode = player.roomCode();
+				final String cachedCode = player.roomCode();
+
 				if (cachedCode == null) {
 					return Mono.empty();
+				} else {
+					return roomRepository.findByCode(cachedCode)
+						.flatMap(room -> room.contains(publicId) ? Mono.just(room) : repairAndResolve(player))
+						.switchIfEmpty(repairAndResolve(player));
 				}
-				return roomRepository.findByCode(cachedCode)
-					.flatMap(room -> room.contains(publicId)
-						? Mono.just(room)
-						: repairAndResolve(player))
-					.switchIfEmpty(repairAndResolve(player));
 			});
 	}
 
 	private Mono<Room> repairAndResolve(Player player) {
-		log.warn("Repairing room index for player {} (was pointing to {})",
-			player.publicId(), player.roomCode());
+		log.warn("Repairing room index for player {} (was pointing to {})", player.publicId(), player.roomCode());
 		return roomRepository.findAll()
 			.filter(room -> room.contains(player.publicId()))
 			.next()
@@ -145,21 +123,19 @@ public class PlayerService {
 			.switchIfEmpty(playerRepository.save(player.withRoomCode(null)).then(Mono.empty()));
 	}
 
-	// ---- helpers -----------------------------------------------------------------------------
-
-	private String sanitiseName(String name) {
-		String trimmed = name == null ? "" : name.strip();
+	private String cleanName(@Nullable String name) {
+		final String trimmed = name == null ? "" : name.strip();
 		if (trimmed.isEmpty()) {
-			throw LobbyException.badRequest("Name must not be empty");
+			throw AtriumException.badRequest("Name must not be empty");
 		}
-		int max = properties.getMaxNameLength();
-		return trimmed.length() > max ? trimmed.substring(0, max) : trimmed;
+		final int maxLength = properties.getMaxNameLength();
+		return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
 	}
 
-	private String sanitiseAvatar(String avatar) {
-		String value = avatar == null ? "" : avatar.strip();
-		int max = properties.getMaxAvatarLength();
-		return value.length() > max ? value.substring(0, max) : value;
+	private String cleanAvatar(@Nullable String avatar) {
+		final String trimmedAvatar = avatar == null ? "" : avatar.strip();
+		final int maxLength = properties.getMaxAvatarLength();
+		return trimmedAvatar.length() > maxLength ? trimmedAvatar.substring(0, maxLength) : trimmedAvatar;
 	}
 
 	/**
@@ -168,4 +144,3 @@ public class PlayerService {
 	public record IdentityResult(Player player, boolean freshIdentity) {
 	}
 }
-

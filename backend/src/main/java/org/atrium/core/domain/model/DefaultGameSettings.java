@@ -16,4 +16,3 @@ public final class DefaultGameSettings extends GameSettings {
 		return "default";
 	}
 }
-

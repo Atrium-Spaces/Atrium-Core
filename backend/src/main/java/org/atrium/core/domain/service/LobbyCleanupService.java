@@ -2,12 +2,11 @@ package org.atrium.core.domain.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-
-import org.atrium.core.autoconfigure.LobbyProperties;
+import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.redis.repository.PlayerRepository;
 import org.atrium.core.redis.repository.RoomRepository;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
@@ -30,32 +29,26 @@ public class LobbyCleanupService {
 	private final RoomRepository roomRepository;
 	private final PlayerRepository playerRepository;
 	private final RoomService roomService;
-	private final LobbyProperties properties;
+	private final AtriumProperties properties;
 
-	@Scheduled(
-		fixedDelayString = "${atrium.lobby.cleanup-interval-seconds:300}000",
-		initialDelayString = "${atrium.lobby.cleanup-interval-seconds:300}000")
+	@Scheduled(fixedDelayString = "${atrium.core.cleanup-interval-seconds:300}000", initialDelayString = "${atrium.core.cleanup-interval-seconds:300}000")
 	public void sweep() {
-		Instant now = Instant.now();
-		Instant lobbyCutoff = now.minusSeconds(properties.getLobbyInactiveTtlSeconds());
-		Instant inGameCutoff = now.minusSeconds(properties.getInGameInactiveTtlSeconds());
-		Instant playerCutoff = now.minusSeconds(properties.getRoomlessPlayerTtlSeconds());
+		final Instant now = Instant.now();
+		final Instant lobbyCutoff = now.minusSeconds(properties.getLobbyInactiveTtlSeconds());
+		final Instant inGameCutoff = now.minusSeconds(properties.getInGameInactiveTtlSeconds());
+		final Instant playerCutoff = now.minusSeconds(properties.getRoomlessPlayerTtlSeconds());
 
 		// Use the looser cutoff for the initial scan and filter per-room by state.
-		Instant scanCutoff = inGameCutoff.isAfter(lobbyCutoff) ? inGameCutoff : lobbyCutoff;
+		final Instant scanCutoff = inGameCutoff.isAfter(lobbyCutoff) ? inGameCutoff : lobbyCutoff;
 
 		roomRepository.findStaleCodes(scanCutoff)
 			.flatMap(roomRepository::findByCode)
-			.filter(room -> {
-				Instant cutoff = switch (room.state()) {
-					case LOBBY -> lobbyCutoff;
-					case IN_GAME -> inGameCutoff;
-				};
-				return room.lastActivityAt().isBefore(cutoff);
-			})
+			.filter(room -> room.lastActivityAt().isBefore(switch (room.state()) {
+				case LOBBY -> lobbyCutoff;
+				case IN_GAME -> inGameCutoff;
+			}))
 			.flatMap(room -> {
-				log.info("Cleanup: deleting stale {} room {} (last activity {})",
-					room.state(), room.code(), room.lastActivityAt());
+				log.info("Cleanup: deleting stale {} room {} (last activity {})", room.state(), room.code(), room.lastActivityAt());
 				return roomService.deleteRoomInternal(room);
 			})
 			.subscribe();
@@ -64,11 +57,9 @@ public class LobbyCleanupService {
 			.flatMap(playerRepository::findById)
 			.filter(player -> player.roomCode() == null && player.lastActiveAt().isBefore(playerCutoff))
 			.flatMap(player -> {
-				log.info("Cleanup: deleting inactive roomless player {} (last active {})",
-					player.publicId(), player.lastActiveAt());
+				log.info("Cleanup: deleting inactive roomless player {} (last active {})", player.publicId(), player.lastActiveAt());
 				return playerRepository.delete(player.publicId());
 			})
 			.subscribe();
 	}
 }
-

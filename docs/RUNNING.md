@@ -26,8 +26,8 @@ Browse to <http://localhost:4200>.
 
 ## Configuration properties
 
-Everything tunable about the lobby is under `atrium.lobby.*` in `application.yml`
-or as `--atrium.lobby.…` command-line arguments. See
+Everything tunable about the lobby is under `atrium.core.*` in `application.yml`
+or as `--atrium.core.…` command-line arguments. See
 [`docs/ARCHITECTURE.md` §7](./ARCHITECTURE.md#7-inactivity-ttls) for the full list.
 
 | Property                          | Default         | Meaning                                  |
@@ -42,14 +42,14 @@ or as `--atrium.lobby.…` command-line arguments. See
 | `in-game-inactive-ttl-seconds`    | `259200`        | In-game room TTL (3 days).               |
 | `roomless-player-ttl-seconds`     | `7200`          | Roomless inactive player TTL.            |
 | `cleanup-interval-seconds`        | `300`           | Cleanup sweep cadence.                   |
-| `websocket-path`                  | `/api/lobby/ws` | WebSocket mount point.                   |
+| `websocket-path`                  | `/api/atrium/ws` | WebSocket mount point.                  |
 | `cors-allowed-origins`            | `["*"]`         | CORS whitelist for the lobby endpoints.  |
 
 ### Example — production overrides
 
 ```yaml
 atrium:
-  lobby:
+  core:
     cors-allowed-origins:
       - "https://play.example.com"
     disconnect-grace-period-seconds: 30
@@ -61,7 +61,7 @@ atrium:
 `bootRun` accepts standard Spring Boot CLI arguments:
 
 ```bash
-./gradlew bootRun --args='--server.port=9090 --atrium.lobby.disconnect-grace-period-seconds=10'
+./gradlew bootRun --args='--server.port=9090 --atrium.core.disconnect-grace-period-seconds=10'
 ```
 
 ## Logging
@@ -86,8 +86,8 @@ Then in `application.yml`:
 
 ```yaml
 atrium:
-  lobby:
-    websocket-path: /api/lobby/ws       # or any path you want
+  core:
+    websocket-path: /api/atrium/ws      # or any path you want
 spring:
   data:
     redis:

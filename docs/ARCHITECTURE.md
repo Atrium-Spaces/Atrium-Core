@@ -56,13 +56,14 @@ record Room(
         boolean isPrivate,
         RoomState state,              // LOBBY | IN_GAME
         Instant createdAt,
-        Instant lastActivityAt)
+        Instant lastActivityAt
+)
 ```
 
-Stored at `lobby:room:{code}` as JSON. Indexed in two sorted sets:
+Stored at `atrium:room:{code}` as JSON. Indexed in two sorted sets:
 
-- `lobby:rooms:all`     — every room, scored by `lastActivityAt` (cleanup sweep).
-- `lobby:rooms:public`  — only `!isPrivate` rooms (home-page listing).
+- `atrium:rooms:all`     — every room, scored by `lastActivityAt` (cleanup sweep).
+- `atrium:rooms:public`  — only `!isPrivate` rooms (home-page listing).
 
 ### 3.2 `Player`
 
@@ -74,10 +75,11 @@ record Player(
         String avatar,
         @Nullable String roomCode,    // active index — repairable
         PlayerStatus status,          // ACTIVE | DISCONNECTED
-        Instant lastActiveAt)
+        Instant lastActiveAt
+)
 ```
 
-Stored at `lobby:player:{publicId}`. Indexed in `lobby:players:all` scored by
+Stored at `atrium:player:{publicId}`. Indexed in `atrium:players:all` scored by
 `lastActiveAt` for the inactive-player sweep.
 
 ### 3.3 The active-index repair scan
@@ -106,10 +108,10 @@ client ──REST──▶ LobbyController ──▶ RoomService / PlayerService
                                                        client (push frame)
 ```
 
-1. The browser sends a write through REST (`POST /api/lobby/rooms/{code}/join`).
+1. The browser sends a write through REST (`POST /api/atrium/rooms/{code}/join`).
 2. `RoomService` authenticates the (publicId, secretId) pair, re-reads the room from
    Redis (source of truth), mutates, and writes back.
-3. After the write commits, it `PUBLISH`es a `RoomEvent` on `lobby:events:{code}`.
+3. After the write commits, it `PUBLISH`es a `RoomEvent` on `atrium:events:{code}`.
 4. Every Spring instance — including ones the client isn't connected to — has the
    `ReactiveRedisMessageListenerContainer` subscribed; each instance forwards the
    event to every WebSocket session it holds for that room.
@@ -118,8 +120,8 @@ client ──REST──▶ LobbyController ──▶ RoomService / PlayerService
 
 | State                      | Where it lives               | Survives Spring restart?              |
 |----------------------------|------------------------------|---------------------------------------|
-| Rooms                      | Redis (`lobby:room:*`)       | Yes                                   |
-| Players                    | Redis (`lobby:player:*`)     | Yes                                   |
+| Rooms                      | Redis (`atrium:room:*`)      | Yes                                   |
+| Players                    | Redis (`atrium:player:*`)    | Yes                                   |
 | Room / player indexes      | Redis (sorted sets)          | Yes                                   |
 | WebSocket sessions         | In-memory on each instance   | No — clients reconnect                |
 | Disconnect grace timers    | `DisconnectTracker` (in-mem) | No — cleanup sweep eventually catches |
@@ -142,11 +144,11 @@ room if it remains idle past its TTL, so the system is eventually consistent.
 
 | Entity                     | Configurable                                       | Default  |
 |----------------------------|----------------------------------------------------|----------|
-| Lobby-state room           | `atrium.lobby.lobby-inactive-ttl-seconds`          | 2 hours  |
-| In-game room               | `atrium.lobby.in-game-inactive-ttl-seconds`        | 3 days   |
-| Player with no `roomCode`  | `atrium.lobby.roomless-player-ttl-seconds`         | 2 hours  |
-| Disconnect grace window    | `atrium.lobby.disconnect-grace-period-seconds`     | 60s      |
-| Cleanup sweep interval     | `atrium.lobby.cleanup-interval-seconds`            | 5 min    |
+| Lobby-state room           | `atrium.core.lobby-inactive-ttl-seconds`           | 2 hours  |
+| In-game room               | `atrium.core.in-game-inactive-ttl-seconds`         | 3 days   |
+| Player with no `roomCode`  | `atrium.core.roomless-player-ttl-seconds`          | 2 hours  |
+| Disconnect grace window    | `atrium.core.disconnect-grace-period-seconds`      | 60s      |
+| Cleanup sweep interval     | `atrium.core.cleanup-interval-seconds`             | 5 min    |
 
 `LobbyCleanupService` runs the sweep on a `@Scheduled` fixed delay. Rooms exceeding
 their state-specific TTL are deleted (broadcasting `RoomEvent.RoomDeleted` first so
@@ -170,12 +172,12 @@ To embed Atrium Core's lobby in another Spring Boot game project:
    }
    ```
 
-3. Mount the game's own controllers / WebSocket handlers at non-`/api/lobby` paths.
+3. Mount the game's own controllers / WebSocket handlers at non-`/api/atrium` paths.
    The lobby will broadcast `RoomEvent.StateChanged(IN_GAME)` when the host starts a
    game — that's the cue for game-specific code to take over.
 
 Optional: annotate your host app with
-`org.atrium.core.spi.EnableLobbySystem` when you want explicit, annotation-driven
+`org.atrium.core.spi.EnableAtrium` when you want explicit, annotation-driven
 import of lobby auto-configuration (functionally equivalent to Boot auto-discovery).
 
 The lobby never touches game logic directly; the boundary is the `RoomState`

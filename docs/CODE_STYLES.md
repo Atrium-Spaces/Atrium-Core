@@ -47,7 +47,7 @@ makes refactor-rename across the file trivial.
 - **TypeScript / Java methods, fields, locals, parameters**: `camelCase`.
 - **TypeScript constants exported from `*.constants.ts`**: `SCREAMING_SNAKE_CASE`.
 - **Java constants (`static final`)**: `SCREAMING_SNAKE_CASE`.
-- **Redis key prefixes** (string literals): `lower:colon:separated` (e.g. `lobby:room:ABCDEF`).
+- **Redis key prefixes** (string literals): `lower:colon:separated` (e.g. `atrium:room:ABCDEF`).
 - **Room codes**: 6-character `UPPER_CASE_ALPHANUMERIC`.
 - **CSS / SCSS class names**: `kebab-case`, prefixed `app-` for app-local utility classes.
 - **Transloco i18n keys**: `camelCase`. Same no-abbreviation rule as identifiers
@@ -120,12 +120,12 @@ return new BuildingDto(
 	building.lon(),
 	building.recipeId(),
 	building.outputIngredientId(),
-	operations);
+	operations
+);
 ```
 
 The opening paren is on the call line; arguments are indented one tab; the closing paren
-sits at the original indent level on its own line (or with the last argument, like the Java
-example above).
+sits at the original indent level on its own line.
 
 ### 2.3 Trailing newline
 
@@ -197,9 +197,9 @@ exists only to make the library runnable on its own for local testing.
 
 ### 3.2 Constants live in their own files
 
-- Backend: `org.atrium.core.domain.constant.LobbyConstants` for compile-time invariants
-  (Redis key prefixes, room-code alphabet); `org.atrium.core.autoconfigure.LobbyProperties`
-  for operator-tunable values bound from `application.yml` under `atrium.lobby.*`.
+- Backend: `org.atrium.core.domain.constant.AtriumConstants` for compile-time invariants
+  (Redis key prefixes, room-code alphabet); `org.atrium.core.autoconfigure.AtriumProperties`
+  for operator-tunable values bound from `application.yml` under `atrium.core.*`.
 - Frontend: `frontend/src/app/core/constant/<area>.constants.ts`.
 
 Magic numbers in component / service code are forbidden. Lift them to a constants file —

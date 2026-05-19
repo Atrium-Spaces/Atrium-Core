@@ -1,7 +1,7 @@
 package org.atrium.core.domain.model;
 
 /**
- * Connection status of a {@link Player} as observed by the lobby. Does not affect game
+ * Connection status of a {@link Player} as observed by Atrium. Does not affect game
  * logic — it's only used to drive UI hints and the 60-second disconnect grace timer.
  */
 public enum PlayerStatus {
@@ -14,4 +14,3 @@ public enum PlayerStatus {
 	 */
 	DISCONNECTED
 }
-

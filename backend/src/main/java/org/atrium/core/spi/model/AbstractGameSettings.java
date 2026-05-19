@@ -11,4 +11,3 @@ import org.atrium.core.domain.model.GameSettings;
  */
 public abstract class AbstractGameSettings extends GameSettings {
 }
-

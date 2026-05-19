@@ -7,14 +7,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.List;
 
 /**
- * Operator-tunable lobby settings. Bind via {@code atrium.lobby.*} in
- * {@code application.yml}. The {@link LobbyAutoConfiguration} class registers this with
- * {@code @EnableConfigurationProperties} so it's a bean and can be injected anywhere.
+ * Operator-tunable lobby settings. Bind via {@code atrium.core.*} in
+ * {@code application.yml}. {@link AtriumAutoConfiguration} registers this with
+ * {@code @EnableConfigurationProperties}, so Spring can inject it anywhere.
  */
 @Getter
 @Setter
-@ConfigurationProperties(prefix = "atrium.lobby")
-public class LobbyProperties {
+@ConfigurationProperties(prefix = "atrium.core")
+public class AtriumProperties {
 
 	/**
 	 * Length of each generated room code, in characters.
@@ -69,11 +69,10 @@ public class LobbyProperties {
 	/**
 	 * WebSocket mount point (clients connect to {@code wss://host{path}/{code}}).
 	 */
-	private String websocketPath = "/api/lobby/ws";
+	private String websocketPath = "/api/atrium/ws";
 
 	/**
 	 * CORS origins for the REST surface; {@code "*"} for permissive development.
 	 */
 	private List<String> corsAllowedOrigins = List.of("*");
 }
-

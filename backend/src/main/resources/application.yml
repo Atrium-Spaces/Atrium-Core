@@ -12,7 +12,7 @@ server:
   port: ${SERVER_PORT:8080}
 
 atrium:
-  lobby:
+  core:
     room-code-length: 6
     default-max-players: 8
     absolute-max-players: 32
@@ -23,7 +23,7 @@ atrium:
     in-game-inactive-ttl-seconds: 259200  # 3 days
     roomless-player-ttl-seconds: 7200     # 2 hours
     cleanup-interval-seconds: 300         # 5 minutes
-    websocket-path: /api/lobby/ws
+    websocket-path: /api/atrium/ws
     cors-allowed-origins:
       - "*"
 

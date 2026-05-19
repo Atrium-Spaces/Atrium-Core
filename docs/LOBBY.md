@@ -15,7 +15,7 @@ The website stores four cookies:
 | `name`     | Display name (cached locally to render before status).  |
 | `avatar`   | Avatar string (URL / Iconify id / emoji).               |
 
-On every page load the client `POST /api/lobby/status` with whatever it has. The
+On every page load the client `POST /api/atrium/status` with whatever it has. The
 server either confirms the `(publicId, secretId)` pair and returns the existing
 player record, or — if either id is missing or the pair doesn't match — mints a
 **fresh** identity and returns `freshIdentity: true`. The client must overwrite its
@@ -42,7 +42,7 @@ Two tabs:
 
 On mount: `GET /rooms/{code}`. If 404 → redirect home (per spec).
 
-Otherwise, open a WebSocket to `/api/lobby/ws/{code}?publicId=…&secretId=…`. The
+Otherwise, open a WebSocket to `/api/atrium/ws/{code}?publicId=…&secretId=…`. The
 first frame is a `snapshot` event giving the full `RoomView`; subsequent frames
 are deltas.
 
@@ -95,7 +95,7 @@ provides:
                                                        performLeave
 ```
 
-The 60-second grace window is the `atrium.lobby.disconnect-grace-period-seconds`
+The 60-second grace window is the `atrium.core.disconnect-grace-period-seconds`
 property. Clients should reconnect aggressively (e.g. exponential backoff with a
 cap shorter than the grace window).
 
@@ -110,12 +110,13 @@ projects subclass it:
 public final class ChessSettings extends GameSettings {
     private final int initialClockSeconds;
     private final int incrementSeconds;
-    @JsonCreator
-    public ChessSettings(@JsonProperty("initialClockSeconds") int initialClockSeconds,
-                         @JsonProperty("incrementSeconds")   int incrementSeconds) {
+
+	@JsonCreator
+    public ChessSettings(@JsonProperty("initialClockSeconds") int initialClockSeconds, @JsonProperty("incrementSeconds")   int incrementSeconds) {
         this.initialClockSeconds = initialClockSeconds;
         this.incrementSeconds = incrementSeconds;
     }
+
     @Override public String gameKind() { return "chess"; }
     // getters …
 }

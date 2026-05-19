@@ -2,9 +2,9 @@ package org.atrium.core.redis.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.atrium.core.autoconfigure.LobbyAutoConfiguration;
-import org.atrium.core.autoconfigure.LobbyProperties;
-import org.atrium.core.domain.constant.LobbyConstants;
+import org.atrium.core.autoconfigure.AtriumAutoConfiguration;
+import org.atrium.core.autoconfigure.AtriumProperties;
+import org.atrium.core.domain.constant.AtriumConstants;
 import org.atrium.core.domain.event.RoomEvent;
 import org.atrium.core.domain.model.Player;
 import org.atrium.core.domain.model.Room;
@@ -36,36 +36,29 @@ import java.util.Map;
  */
 @Configuration(proxyBeanMethods = false)
 @RequiredArgsConstructor
-public class RedisLobbyConfiguration {
+public class RedisAtriumConfiguration {
 
 	@Bean
-	@ConditionalOnMissingBean(name = "lobbyRoomRedisTemplate")
-	public ReactiveRedisTemplate<String, Room> lobbyRoomRedisTemplate(
-		ReactiveRedisConnectionFactory connectionFactory,
-		ObjectMapper objectMapper) {
+	@ConditionalOnMissingBean(name = "atriumRoomRedisTemplate")
+	public ReactiveRedisTemplate<String, Room> atriumRoomRedisTemplate(ReactiveRedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
 		return buildTemplate(connectionFactory, objectMapper, Room.class);
 	}
 
 	@Bean
-	@ConditionalOnMissingBean(name = "lobbyPlayerRedisTemplate")
-	public ReactiveRedisTemplate<String, Player> lobbyPlayerRedisTemplate(
-		ReactiveRedisConnectionFactory connectionFactory,
-		ObjectMapper objectMapper) {
+	@ConditionalOnMissingBean(name = "atriumPlayerRedisTemplate")
+	public ReactiveRedisTemplate<String, Player> atriumPlayerRedisTemplate(ReactiveRedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
 		return buildTemplate(connectionFactory, objectMapper, Player.class);
 	}
 
 	@Bean
-	@ConditionalOnMissingBean(name = "lobbyEventRedisTemplate")
-	public ReactiveRedisTemplate<String, RoomEvent> lobbyEventRedisTemplate(
-		ReactiveRedisConnectionFactory connectionFactory,
-		ObjectMapper objectMapper) {
+	@ConditionalOnMissingBean(name = "atriumEventRedisTemplate")
+	public ReactiveRedisTemplate<String, RoomEvent> atriumEventRedisTemplate(ReactiveRedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
 		return buildTemplate(connectionFactory, objectMapper, RoomEvent.class);
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	public ReactiveRedisMessageListenerContainer reactiveRedisMessageListenerContainer(
-		ReactiveRedisConnectionFactory connectionFactory) {
+	public ReactiveRedisMessageListenerContainer reactiveRedisMessageListenerContainer(ReactiveRedisConnectionFactory connectionFactory) {
 		return new ReactiveRedisMessageListenerContainer(connectionFactory);
 	}
 
@@ -76,15 +69,12 @@ public class RedisLobbyConfiguration {
 	 * so the framework's annotation-based handler mapping doesn't grab the path first.
 	 */
 	@Bean
-	@ConditionalOnMissingBean(name = "lobbyWebSocketHandlerMapping")
-	public HandlerMapping lobbyWebSocketHandlerMapping(
-		RoomWebSocketHandler roomWebSocketHandler,
-		LobbyProperties properties) {
-		Map<String, WebSocketHandler> handlers = Map.of(
-			properties.getWebsocketPath() + "/{code}", roomWebSocketHandler);
-		SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping(handlers);
+	@ConditionalOnMissingBean(name = "atriumWebSocketHandlerMapping")
+	public HandlerMapping atriumWebSocketHandlerMapping(RoomWebSocketHandler roomWebSocketHandler, AtriumProperties properties) {
+		final Map<String, WebSocketHandler> handlers = Map.of(properties.getWebsocketPath() + "/{code}", roomWebSocketHandler);
+		final SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping(handlers);
 		mapping.setOrder(-1);
-		mapping.setCorsConfigurations(LobbyAutoConfiguration.corsConfigurations(properties));
+		mapping.setCorsConfigurations(AtriumAutoConfiguration.corsConfigurations(properties));
 		return mapping;
 	}
 
@@ -94,25 +84,18 @@ public class RedisLobbyConfiguration {
 		return new WebSocketHandlerAdapter();
 	}
 
-	// ---- helpers -----------------------------------------------------------------------------
-
-	private static <T> ReactiveRedisTemplate<String, T> buildTemplate(
-		ReactiveRedisConnectionFactory connectionFactory,
-		ObjectMapper objectMapper,
-		Class<T> valueType) {
-		Jackson2JsonRedisSerializer<T> valueSerializer = new Jackson2JsonRedisSerializer<>(objectMapper, valueType);
-		RedisSerializationContext<String, T> context = RedisSerializationContext
+	private static <T> ReactiveRedisTemplate<String, T> buildTemplate(ReactiveRedisConnectionFactory connectionFactory, ObjectMapper objectMapper, Class<T> valueType) {
+		final Jackson2JsonRedisSerializer<T> valueSerializer = new Jackson2JsonRedisSerializer<>(objectMapper, valueType);
+		return new ReactiveRedisTemplate<>(connectionFactory, RedisSerializationContext
 			.<String, T>newSerializationContext(new StringRedisSerializer())
 			.value(valueSerializer)
 			.hashKey(new StringRedisSerializer())
 			.hashValue(valueSerializer)
-			.build();
-		return new ReactiveRedisTemplate<>(connectionFactory, context);
+			.build());
 	}
 
 	@SuppressWarnings("unused") // referenced from LobbyAutoConfiguration via constant
 	static String channelFor(String roomCode) {
-		return LobbyConstants.eventChannel(roomCode);
+		return AtriumConstants.eventChannel(roomCode);
 	}
 }
-

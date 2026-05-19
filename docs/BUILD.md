@@ -57,7 +57,7 @@ npm test            # Karma + Jasmine
 ## Both at once
 
 Open two terminals — backend on 8080, frontend on 4200 with its `proxy.conf` (TBD)
-forwarding `/api/*` and `/api/lobby/ws/*` to the backend.
+forwarding `/api/*` and `/api/atrium/ws/*` to the backend.
 
 ## Reproducible archives
 

@@ -2,6 +2,8 @@ package org.atrium.core.redis.stream;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.atrium.core.domain.constant.AtriumConstants;
+import org.atrium.core.domain.event.RoomEvent;
 import org.springframework.data.redis.connection.ReactiveSubscription;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
@@ -9,9 +11,6 @@ import org.springframework.data.redis.listener.ReactiveRedisMessageListenerConta
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import org.atrium.core.domain.constant.LobbyConstants;
-import org.atrium.core.domain.event.RoomEvent;
 
 import java.util.List;
 
@@ -32,18 +31,14 @@ public class RoomBroadcastService {
 	private final ReactiveRedisMessageListenerContainer listenerContainer;
 
 	public Mono<Long> publish(RoomEvent event) {
-		String channel = LobbyConstants.eventChannel(event.roomCode());
+		final String channel = AtriumConstants.eventChannel(event.roomCode());
 		log.debug("Publishing {} to {}", event.getClass().getSimpleName(), channel);
 		return eventTemplate.convertAndSend(channel, event);
 	}
 
 	public Flux<RoomEvent> subscribe(String roomCode) {
-		ChannelTopic topic = ChannelTopic.of(LobbyConstants.eventChannel(roomCode));
-		return listenerContainer.receive(
-				List.of(topic),
-				eventTemplate.getSerializationContext().getKeySerializationPair(),
-				eventTemplate.getSerializationContext().getValueSerializationPair())
+		final ChannelTopic topic = ChannelTopic.of(AtriumConstants.eventChannel(roomCode));
+		return listenerContainer.receive(List.of(topic), eventTemplate.getSerializationContext().getKeySerializationPair(), eventTemplate.getSerializationContext().getValueSerializationPair())
 			.map(ReactiveSubscription.Message::getMessage);
 	}
 }
-

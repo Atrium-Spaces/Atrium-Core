@@ -16,14 +16,10 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * </ul>
  *
  * <p>The {@link JsonTypeInfo} annotation embeds a {@code type} discriminator into the
- * JSON payload so the lobby system can round-trip arbitrary subclasses through Redis
+ * JSON payload so the Atrium system can round-trip arbitrary subclasses through Redis
  * and the wire without knowing them ahead of time.
  */
-@JsonTypeInfo(
-	use = JsonTypeInfo.Id.NAME,
-	include = JsonTypeInfo.As.PROPERTY,
-	property = "type",
-	defaultImpl = DefaultGameSettings.class)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type", defaultImpl = DefaultGameSettings.class)
 public abstract class GameSettings {
 
 	/**
@@ -32,4 +28,3 @@ public abstract class GameSettings {
 	 */
 	public abstract String gameKind();
 }
-

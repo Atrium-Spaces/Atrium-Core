@@ -13,4 +13,3 @@ public enum RoomState {
 	 */
 	IN_GAME
 }
-

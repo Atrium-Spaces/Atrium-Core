@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A lobby room. The room entity is the single source of truth for membership — the
+ * An Atrium room. The room entity is the single source of truth for membership — the
  * {@link Player#roomCode()} field is a derived index that can be rebuilt from a scan
  * of all rooms if it drifts.
  *
@@ -20,16 +20,7 @@ import java.util.UUID;
  * @param createdAt      wall-clock creation time
  * @param lastActivityAt last time anything in this room changed; drives the room TTL
  */
-public record Room(
-	String code,
-	UUID host,
-	List<UUID> players,
-	int maxPlayers,
-	GameSettings gameSettings,
-	boolean isPrivate,
-	RoomState state,
-	Instant createdAt,
-	Instant lastActivityAt) {
+public record Room(String code, UUID host, List<UUID> players, int maxPlayers, GameSettings gameSettings, boolean isPrivate, RoomState state, Instant createdAt, Instant lastActivityAt) {
 
 	public Room withPlayers(List<UUID> newPlayers) {
 		return new Room(code, host, List.copyOf(newPlayers), maxPlayers, gameSettings, isPrivate, state, createdAt, Instant.now());
@@ -59,4 +50,3 @@ public record Room(
 		return players.size() >= maxPlayers;
 	}
 }
-

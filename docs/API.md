@@ -1,10 +1,10 @@
 # HTTP & WebSocket API
 
-> Generated from `org.atrium.core.api.controller.LobbyController` and
+> Generated from `org.atrium.core.api.controller.AtriumController` and
 > `org.atrium.core.websocket.RoomWebSocketHandler`. When the code changes, update
 > this document in the same PR.
 
-Base path: **`/api/lobby`**. All write endpoints expect a JSON body containing the
+Base path: **`/api/atrium`**. All write endpoints expect a JSON body containing the
 caller's `publicId` and `secretId`; the secret id never appears in URLs or headers.
 
 Errors are returned as
@@ -20,7 +20,7 @@ Errors are returned as
 
 ## REST
 
-### POST `/api/lobby/status`
+### POST `/api/atrium/status`
 
 Identity bootstrap. Returns existing or freshly minted identity, and the room (if
 any) the player is currently in.
@@ -52,7 +52,7 @@ any) the player is currently in.
 When `freshIdentity` is `true`, the client **must** persist `publicId` and
 `secretId` to cookies — these are the new identity.
 
-### POST `/api/lobby/profile`
+### POST `/api/atrium/profile`
 
 Update the caller's display name and avatar. Allowed in or out of a room. If the
 player is in a room, the new profile is broadcast as a `playerUpdated` event.
@@ -65,7 +65,7 @@ player is in a room, the new profile is broadcast as a `playerUpdated` event.
 
 **Response 200** — no body.
 
-### GET `/api/lobby/rooms?limit=50`
+### GET `/api/atrium/rooms?limit=50`
 
 List public rooms (most-recently-active first).
 
@@ -75,12 +75,12 @@ List public rooms (most-recently-active first).
 { "rooms": [ { /* RoomView */ }, … ] }
 ```
 
-### GET `/api/lobby/rooms/{code}`
+### GET `/api/atrium/rooms/{code}`
 
 Get a single room's `RoomView`. Returns 404 if the room doesn't exist (the
 frontend should redirect to the home page).
 
-### POST `/api/lobby/rooms`
+### POST `/api/atrium/rooms`
 
 Create a new room. The caller is automatically the host.
 
@@ -96,11 +96,11 @@ Create a new room. The caller is automatically the host.
 }
 ```
 
-`maxPlayers` and `gameSettings` are optional (defaults from `LobbyProperties`).
+`maxPlayers` and `gameSettings` are optional (defaults from `AtriumProperties`).
 
 **Response 201** — `RoomView`.
 
-### POST `/api/lobby/rooms/{code}/join`
+### POST `/api/atrium/rooms/{code}/join`
 
 Join an existing room.
 
@@ -118,7 +118,7 @@ Join an existing room.
 - `403` room is in `IN_GAME` (spectate via WebSocket instead) or is full.
 - `409` player is already in a different room.
 
-### POST `/api/lobby/rooms/{code}/leave`
+### POST `/api/atrium/rooms/{code}/leave`
 
 Leave a room voluntarily.
 
@@ -132,7 +132,7 @@ Leave a room voluntarily.
 remaining player is promoted (`hostChanged` event). If the room becomes empty,
 it's deleted (`roomDeleted` event).
 
-### POST `/api/lobby/rooms/{code}/kick`
+### POST `/api/atrium/rooms/{code}/kick`
 
 Host-only.
 
@@ -144,7 +144,7 @@ Host-only.
 
 **Response 200** — no body.
 
-### DELETE `/api/lobby/rooms/{code}`
+### DELETE `/api/atrium/rooms/{code}`
 
 Host-only. Deletes the room outright (broadcasts `roomDeleted` to every member,
 clears their `roomCode` indexes).
@@ -155,7 +155,7 @@ clears their `roomCode` indexes).
 { "publicId": "host-…", "secretId": "host-…" }
 ```
 
-### PATCH `/api/lobby/rooms/{code}/settings`
+### PATCH `/api/atrium/rooms/{code}/settings`
 
 Host-only. Only allowed in `LOBBY` state. Any field left out is unchanged.
 
@@ -173,20 +173,20 @@ Host-only. Only allowed in `LOBBY` state. Any field left out is unchanged.
 
 **Response 200** — updated `RoomView`. A `settingsChanged` event is broadcast.
 
-### POST `/api/lobby/rooms/{code}/start`
+### POST `/api/atrium/rooms/{code}/start`
 
 Host-only. Transitions `LOBBY → IN_GAME`. A `stateChanged` event is broadcast —
 game-specific code listens for this to spin up the actual game state.
 
-### POST `/api/lobby/rooms/{code}/stop`
+### POST `/api/atrium/rooms/{code}/stop`
 
 Host-only. Transitions `IN_GAME → LOBBY`, keeping the player roster intact.
 
 ## WebSocket
 
-Mount: **`/api/lobby/ws/{code}?publicId=…&secretId=…`**
+Mount: **`/api/atrium/ws/{code}?publicId=…&secretId=…`**
 
-Mass-broadcast channel for room events. Connect after `POST /api/lobby/status`
+Mass-broadcast channel for room events. Connect after `POST /api/atrium/status`
 when entering a room page. The handler:
 
 1. Authenticates the `(publicId, secretId)` pair.
@@ -194,7 +194,7 @@ when entering a room page. The handler:
 3. Marks the player `ACTIVE` (broadcasts `playerReconnected` if they had been
    `DISCONNECTED`).
 4. Sends one `snapshot` frame containing the full `RoomView`.
-5. Forwards every subsequent `RoomEvent` from `lobby:events:{code}` as a JSON
+5. Forwards every subsequent `RoomEvent` from `atrium:events:{code}` as a JSON
    text frame.
 
 On disconnect: marks the player `DISCONNECTED`, broadcasts `playerDisconnected`,
