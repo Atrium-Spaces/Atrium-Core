@@ -12,7 +12,7 @@ Downstream projects depending on Atrium Core get:
 - Redis-backed state and pub/sub fan-out across instances;
 - a polymorphic `GameSettings` extension point so the host project can plug its
   own game-specific configuration in via Jackson `@JsonTypeInfo`;
-- SPI hooks (`GameLifecycleListener`) and optional `@EnableLobbySystem` annotation
+- extension hooks (`GameLifecycleListener`) and optional `@EnableAtrium` annotation
   for explicit starter-style integration.
 
 The library never touches game logic itself. A downstream project adds the lobby
@@ -28,7 +28,7 @@ as a dependency, registers its `GameSettings` subtype, and listens for the
 | Runtime   | Spring Boot 3.x, WebFlux                                  | Angular 21 standalone components, signals |
 | State     | Redis (Spring Data Redis Reactive)                        | Cookies + Angular service state           |
 | Messaging | Redis Pub/Sub via `ReactiveRedisMessageListenerContainer` | WebSocket client                          |
-| Helpers   | Lombok, fastutil, JSpecify                                | PrimeNG, Transloco (i18n), Iconify        |
+| Helpers   | Lombok, JSpecify                                          | PrimeNG, Transloco (i18n), Iconify        |
 | Lint      | `javac -Xlint:all`                                        | ESLint flat config (angular-eslint)       |
 
 ## Documentation

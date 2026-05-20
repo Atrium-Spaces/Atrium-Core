@@ -14,15 +14,13 @@ server:
 atrium:
   core:
     room-code-length: 6
+    default-min-players: 2
+    absolute-min-players: 1
     default-max-players: 8
     absolute-max-players: 32
     max-name-length: 32
     max-avatar-length: 256
-    disconnect-grace-period-seconds: 60
-    lobby-inactive-ttl-seconds: 7200      # 2 hours
-    in-game-inactive-ttl-seconds: 259200  # 3 days
-    roomless-player-ttl-seconds: 7200     # 2 hours
-    cleanup-interval-seconds: 300         # 5 minutes
+    cleanup-inactive-seconds: 259200  # 3 days
     websocket-path: /api/atrium/ws
     cors-allowed-origins:
       - "*"
@@ -30,4 +28,3 @@ atrium:
 logging:
   level:
     org.atrium: INFO
-

@@ -1,4 +1,4 @@
-package org.atrium.core.spi;
+package org.atrium.core.extension;
 
 import org.atrium.core.autoconfigure.AtriumAutoConfiguration;
 import org.springframework.context.annotation.Import;

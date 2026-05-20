@@ -1,4 +1,4 @@
-package org.atrium.core.spi.listener;
+package org.atrium.core.extension.listener;
 
 import org.atrium.core.domain.model.Room;
 import org.jspecify.annotations.Nullable;
@@ -7,7 +7,7 @@ import reactor.core.publisher.Mono;
 import java.util.UUID;
 
 /**
- * SPI hook for game projects embedding the lobby library.
+ * Extension hook for game projects embedding the lobby library.
  *
  * <p>Implement this interface (as a Spring bean) to react to lobby lifecycle
  * events and bridge them into game-specific orchestration.

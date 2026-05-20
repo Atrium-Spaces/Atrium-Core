@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.atrium.core.domain.model.DefaultGameSettings;
 import org.atrium.core.domain.model.GameSettings;
+import org.atrium.core.extension.listener.GameLifecycleListener;
+import org.atrium.core.extension.listener.NoOpGameLifecycleListener;
 import org.atrium.core.redis.config.RedisAtriumConfiguration;
-import org.atrium.core.spi.listener.GameLifecycleListener;
-import org.atrium.core.spi.listener.NoOpGameLifecycleListener;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -46,7 +46,7 @@ import java.util.Map;
 	"org.atrium.core.websocket",
 })
 @Import(RedisAtriumConfiguration.class)
-public class AtriumAutoConfiguration {
+public final class AtriumAutoConfiguration {
 
 	/**
 	 * Default Jackson module that registers {@link DefaultGameSettings} as a subtype of
@@ -62,7 +62,7 @@ public class AtriumAutoConfiguration {
 	}
 
 	/**
-	 * Default no-op SPI listener. Host projects can override with their own
+	 * Default no-op extension listener. Host projects can override with their own
 	 * {@link GameLifecycleListener} bean.
 	 */
 	@Bean

@@ -16,12 +16,19 @@ import java.security.SecureRandom;
  */
 @Component
 @RequiredArgsConstructor
-public class RoomCodeGenerator {
+public final class RoomCodeGenerator {
 
 	private final RoomRepository roomRepository;
 	private final AtriumProperties properties;
 	private final SecureRandom random = new SecureRandom();
 
+	/**
+	 * Generate a unique room code. Retries on collision up to
+	 * {@link AtriumConstants#ROOM_CODE_GENERATION_MAX_ATTEMPTS} times.
+	 *
+	 * @return a unique room code
+	 * @throws AtriumException if a collision-free code could not be generated within the retry limit
+	 */
 	public Mono<String> next() {
 		return attempt(0);
 	}

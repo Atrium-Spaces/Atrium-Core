@@ -6,6 +6,7 @@ import org.atrium.core.autoconfigure.AtriumAutoConfiguration;
 import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.domain.constant.AtriumConstants;
 import org.atrium.core.domain.event.RoomEvent;
+import org.atrium.core.domain.model.GameSettings;
 import org.atrium.core.domain.model.Player;
 import org.atrium.core.domain.model.Room;
 import org.atrium.core.websocket.RoomWebSocketHandler;
@@ -31,12 +32,12 @@ import java.util.Map;
  *
  * <p>Every bean is gated with {@link ConditionalOnMissingBean} so a downstream
  * application can override any single piece (e.g. providing a custom Jackson
- * {@code ObjectMapper} with extra {@link org.atrium.core.domain.model.GameSettings} subtypes
+ * {@code ObjectMapper} with extra {@link GameSettings} subtypes
  * registered) without losing the rest of the wiring.
  */
 @Configuration(proxyBeanMethods = false)
 @RequiredArgsConstructor
-public class RedisAtriumConfiguration {
+public final class RedisAtriumConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(name = "atriumRoomRedisTemplate")
@@ -94,6 +95,13 @@ public class RedisAtriumConfiguration {
 			.build());
 	}
 
+	/**
+	 * Resolve the Redis pub/sub channel name for a given room code.
+	 * Referenced from auto-configuration via constant reference.
+	 *
+	 * @param roomCode the 6-character room code
+	 * @return the full channel name (e.g. {@code atrium:events:ABCDEF})
+	 */
 	@SuppressWarnings("unused") // referenced from LobbyAutoConfiguration via constant
 	static String channelFor(String roomCode) {
 		return AtriumConstants.eventChannel(roomCode);

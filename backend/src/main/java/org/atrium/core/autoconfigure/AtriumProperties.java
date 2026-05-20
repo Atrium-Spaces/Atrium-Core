@@ -14,12 +14,22 @@ import java.util.List;
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "atrium.core")
-public class AtriumProperties {
+public final class AtriumProperties {
 
 	/**
 	 * Length of each generated room code, in characters.
 	 */
 	private int roomCodeLength = 6;
+
+	/**
+	 * Default floor on players for newly-created rooms.
+	 */
+	private int defaultMinPlayers = 2;
+
+	/**
+	 * Hard floor on {@code minPlayers} regardless of host preference.
+	 */
+	private int absoluteMinPlayers = 1;
 
 	/**
 	 * Default cap on players for newly-created rooms.
@@ -42,29 +52,11 @@ public class AtriumProperties {
 	private int maxAvatarLength = 256;
 
 	/**
-	 * Grace window after a WebSocket drop before the player is officially removed.
+	 * Generic inactivity threshold (in seconds) used by scheduled cleanup jobs.
+	 *
+	 * <p>Applied to stale room cleanup and stale player cleanup flows.
 	 */
-	private long disconnectGracePeriodSeconds = 60L;
-
-	/**
-	 * A lobby-state room is deleted after this long with no activity.
-	 */
-	private long lobbyInactiveTtlSeconds = 7_200L; // 2 hours
-
-	/**
-	 * An in-game room is deleted after this long with no activity.
-	 */
-	private long inGameInactiveTtlSeconds = 259_200L; // 3 days
-
-	/**
-	 * Players not in any room are removed after this long.
-	 */
-	private long roomlessPlayerTtlSeconds = 7_200L; // 2 hours
-
-	/**
-	 * How often {@link org.atrium.core.domain.service.LobbyCleanupService} sweeps.
-	 */
-	private long cleanupIntervalSeconds = 300L; // 5 minutes
+	private long cleanupInactiveSeconds = 259_200L; // 3 days
 
 	/**
 	 * WebSocket mount point (clients connect to {@code wss://host{path}/{code}}).

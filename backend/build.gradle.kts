@@ -17,7 +17,6 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
-	implementation("it.unimi.dsi:fastutil:+")
 	implementation("org.jspecify:jspecify:+")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("io.projectreactor:reactor-test")

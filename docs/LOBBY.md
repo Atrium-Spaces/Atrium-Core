@@ -23,7 +23,8 @@ cookies with whatever the server returned.
 
 Identity is **decoupled** from the lobby: a brand-new player exists in Redis the
 moment they hit `/status`. They're roomless (`roomCode = null`) until they
-explicitly join one, and roomless inactive players are pruned by the cleanup sweep.
+explicitly join one. Roomless players inactive beyond the cleanup threshold are
+pruned by the scheduled sweep.
 
 ## 2. Home page
 
@@ -42,7 +43,7 @@ Two tabs:
 
 On mount: `GET /rooms/{code}`. If 404 → redirect home (per spec).
 
-Otherwise, open a WebSocket to `/api/atrium/ws/{code}?publicId=…&secretId=…`. The
+Otherwise, open a WebSocket to `/api/atrium/ws/{code}?publicId=...&secretId=...`. The
 first frame is a `snapshot` event giving the full `RoomView`; subsequent frames
 are deltas.
 
@@ -76,28 +77,16 @@ provides:
 - **Host leaves voluntarily** → longest-joined remaining player becomes host
   (`hostChanged` event).
 - **Host's WebSocket drops** → `playerDisconnected` event but host stays host;
-  the grace timer is what eventually triggers leave-and-promote if they don't
-  return.
+  there is no delayed auto-leave in MVP.
 - **Host explicitly deletes** → `roomDeleted` event; all members redirected home.
 
 ## 5. Disconnect handling
 
-```
-─── WebSocket open ────────────────────────────────────────────▶
-                          ▲                                   ▲
-                          │                                   │
-                  cancel timer                          schedule leave
-                          │                                   │
-   reconnect ────────────┘                                   │
-                                                              │
-   no reconnect within 60s                                    │
-       ──────────────────────────────────────────────────────┘
-                                                       performLeave
-```
+When a room member's WebSocket disconnects, the server marks them
+`DISCONNECTED` and broadcasts `playerDisconnected`. Reconnecting marks them
+`ACTIVE` and broadcasts `playerReconnected`.
 
-The 60-second grace window is the `atrium.core.disconnect-grace-period-seconds`
-property. Clients should reconnect aggressively (e.g. exponential backoff with a
-cap shorter than the grace window).
+No scheduled auto-leave runs after disconnect in MVP.
 
 ## 6. Polymorphic game settings
 
@@ -118,17 +107,25 @@ public final class ChessSettings extends GameSettings {
     }
 
     @Override public String gameKind() { return "chess"; }
-    // getters …
+    // getters ...
 }
 ```
 
-…and register the subtype with a Jackson `Module` bean (see
+...and register the subtype with a Jackson `Module` bean (see
 [`ARCHITECTURE.md` §8](./ARCHITECTURE.md#8-extension-points-for-downstream-projects)).
 
 The frontend round-trips the JSON opaquely — it doesn't need to know any concrete
 type at the wire level.
 
-## 7. The active-index repair scan
+## 7. PlayerView joinedAt limitation
+
+The `joinedAt` field in `PlayerView` is populated with the room's `createdAt`
+timestamp as a fallback. The domain model does not yet track per-player join times,
+so all members of a room share the same visible join time in the current
+implementation. Downstream consumers should treat `joinedAt` as an approximate
+indicator only.
+
+## 8. The active-index repair scan
 
 Players carry a `roomCode` field as a fast lookup hint. If it ever disagrees with
 the canonical room rosters (because Redis was partially restored, or a race in a

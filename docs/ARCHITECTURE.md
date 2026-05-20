@@ -15,7 +15,7 @@ Atrium-Core/
 │           ├── api/                          REST controllers, DTOs, API errors
 │           ├── domain/                       Domain model + core orchestration
 │           ├── redis/                        Redis config, repositories, pub/sub bridge
-│           ├── spi/                          Consumer extension points
+│           ├── extension/                    Consumer extension points
 │           └── websocket/                    WebFlux WebSocket bridge to Redis pub/sub
 └── frontend/                                 Angular standalone app (lobby UI lives here)
 ```
@@ -34,7 +34,6 @@ module get the core infrastructure auto-wired without needing the host class.
 | Persistence      | Redis (reactive driver via Spring Data Redis Reactive)        | Single store for both state cache and pub/sub fan-out.                          |
 | Messaging        | Redis Pub/Sub (`ReactiveRedisMessageListenerContainer`)       | Channels per room; no extra broker; multi-instance fan-out.                     |
 | Serialisation    | Jackson with `@JsonTypeInfo` polymorphism                     | Lets downstream projects bring their own `GameSettings` subtype.                |
-| Collections      | fastutil for hot paths                                        | See [`CODE_STYLES.md` §3.9](./CODE_STYLES.md#39-fastutil-over-jdk-collections). |
 | Null discipline  | JSpecify (`@NullMarked` on every package, `@Nullable` opt-in) | Documented contracts, IDE-checked.                                              |
 | Code generation  | Lombok                                                        | `@RequiredArgsConstructor`, `@Slf4j` on every service.                          |
 | Build (frontend) | Angular CLI 21 + ESLint                                       | Standalone components, signals.                                                 |
@@ -51,6 +50,7 @@ record Room(
         String code,                  // 6-char [A-Z0-9]
         UUID host,                    // public id of the host player
         List<UUID> players,           // public ids in join order; index 0 is longest-joined
+        int minPlayers,
         int maxPlayers,
         GameSettings gameSettings,    // polymorphic (@JsonTypeInfo)
         boolean isPrivate,
@@ -80,7 +80,7 @@ record Player(
 ```
 
 Stored at `atrium:player:{publicId}`. Indexed in `atrium:players:all` scored by
-`lastActiveAt` for the inactive-player sweep.
+`lastActiveAt`.
 
 ### 3.3 The active-index repair scan
 
@@ -97,7 +97,7 @@ index is rewritten to match; otherwise the index is cleared.
 ## 4. Request lifecycle
 
 ```
-client ──REST──▶ LobbyController ──▶ RoomService / PlayerService ──┐
+client ──REST──▶ AtriumController ──▶ RoomService / PlayerService ──┐
                                                                    │
                                        ┌───── Redis (state) ◀──────┤
                                        │                           │
@@ -124,7 +124,7 @@ client ──REST──▶ LobbyController ──▶ RoomService / PlayerService
 | Players                    | Redis (`atrium:player:*`)    | Yes                                   |
 | Room / player indexes      | Redis (sorted sets)          | Yes                                   |
 | WebSocket sessions         | In-memory on each instance   | No — clients reconnect                |
-| Disconnect grace timers    | `DisconnectTracker` (in-mem) | No — cleanup sweep eventually catches |
+| Disconnect grace timers    | *(none in MVP)*              | N/A                                   |
 | Public id ↔ Redis identity | Browser cookies + Redis      | Yes                                   |
 
 ## 6. Multi-instance behaviour
@@ -135,32 +135,34 @@ The lobby is **horizontally scalable**: any instance can serve any request, beca
 - every cross-client notification fans out through Redis pub/sub, not through
   in-memory channels.
 
-The only instance-local piece is the disconnect grace timer. If a player's WebSocket
-was on instance A and instance A crashes during the 60-second window, the player is
-not immediately leave-room'd — but the next scheduled cleanup sweep will reap the
-room if it remains idle past its TTL, so the system is eventually consistent.
+The design avoids instance-local timer state for membership transitions. If a player's
+WebSocket drops, they are marked disconnected but remain in the room until an explicit
+leave/kick/delete action or inactive-room cleanup removes the room.
 
-## 7. Inactivity TTLs
+## 7. Inactivity cleanup
 
-| Entity                     | Configurable                                       | Default  |
-|----------------------------|----------------------------------------------------|----------|
-| Lobby-state room           | `atrium.core.lobby-inactive-ttl-seconds`           | 2 hours  |
-| In-game room               | `atrium.core.in-game-inactive-ttl-seconds`         | 3 days   |
-| Player with no `roomCode`  | `atrium.core.roomless-player-ttl-seconds`          | 2 hours  |
-| Disconnect grace window    | `atrium.core.disconnect-grace-period-seconds`      | 60s      |
-| Cleanup sweep interval     | `atrium.core.cleanup-interval-seconds`             | 5 min    |
+`LobbyCleanupService` runs on a fixed delay (5 minutes) and uses one shared threshold:
+`atrium.core.cleanup-inactive-seconds` (default: 259200 = 3 days).
 
-`LobbyCleanupService` runs the sweep on a `@Scheduled` fixed delay. Rooms exceeding
-their state-specific TTL are deleted (broadcasting `RoomEvent.RoomDeleted` first so
-any still-connected clients can react); roomless inactive players are removed.
+Each sweep performs:
+
+1. Delete rooms whose `lastActivityAt` is older than the threshold.
+2. For each room being deleted, delete players in that room whose `lastActiveAt` is
+   also older than the threshold.
+3. Delete roomless players whose `lastActiveAt` is older than the threshold.
+
+No disconnect-grace auto-leave timer is performed.
+
+A known limitation: the `PlayerView.joinedAt` field uses the room's creation time
+as a fallback because per-player join timestamps are not tracked in the current
+domain model (see [`LOBBY.md §7`](./LOBBY.md#7-playerview-joinedat-limitation)).
 
 ## 8. Extension points for downstream projects
 
 To embed Atrium Core's lobby in another Spring Boot game project:
 
 1. Add this module as a Gradle dependency.
-2. Subclass `GameSettings` (or the SPI-facing alias
-   `org.atrium.core.spi.model.AbstractGameSettings`) with your game-specific configuration and register the
+2. Subclass `GameSettings` with your game-specific configuration and register the
    subtype via a Jackson `Module` bean:
 
    ```java
@@ -177,7 +179,7 @@ To embed Atrium Core's lobby in another Spring Boot game project:
    game — that's the cue for game-specific code to take over.
 
 Optional: annotate your host app with
-`org.atrium.core.spi.EnableAtrium` when you want explicit, annotation-driven
+`org.atrium.core.extension.EnableAtrium` when you want explicit, annotation-driven
 import of lobby auto-configuration (functionally equivalent to Boot auto-discovery).
 
 The lobby never touches game logic directly; the boundary is the `RoomState`

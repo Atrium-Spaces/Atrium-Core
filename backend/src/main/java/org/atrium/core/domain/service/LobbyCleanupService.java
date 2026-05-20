@@ -3,63 +3,76 @@ package org.atrium.core.domain.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.atrium.core.autoconfigure.AtriumProperties;
+import org.atrium.core.domain.model.Room;
 import org.atrium.core.redis.repository.PlayerRepository;
 import org.atrium.core.redis.repository.RoomRepository;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 
 /**
- * Periodic Redis sweep that enforces the lobby TTLs:
+ * Periodic Redis sweep for stale entities using one shared inactivity threshold.
  *
- * <ul>
- *   <li>Lobby-state rooms idle for &gt; {@code lobbyInactiveTtlSeconds} are deleted.</li>
- *   <li>In-game rooms idle for &gt; {@code inGameInactiveTtlSeconds} are deleted.</li>
- *   <li>Players with no {@code roomCode} idle for &gt; {@code roomlessPlayerTtlSeconds} are deleted.</li>
- * </ul>
- *
- * <p>The {@link Scheduled#fixedRateString} interval is taken from {@code LobbyProperties}.
+ * <p>On each run:
+ * <ol>
+ *   <li>Delete rooms inactive beyond {@code atrium.core.cleanup-inactive-seconds}.</li>
+ *   <li>From each deleted room, delete members who are also inactive beyond the same threshold.</li>
+ *   <li>Delete roomless players inactive beyond the same threshold.</li>
+ * </ol>
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class LobbyCleanupService {
+public final class LobbyCleanupService {
 
+	private final AtriumProperties properties;
 	private final RoomRepository roomRepository;
 	private final PlayerRepository playerRepository;
 	private final RoomService roomService;
-	private final AtriumProperties properties;
 
-	@Scheduled(fixedDelayString = "${atrium.core.cleanup-interval-seconds:300}000", initialDelayString = "${atrium.core.cleanup-interval-seconds:300}000")
+	@Scheduled(fixedDelay = 300_000, initialDelay = 300_000)
 	public void sweep() {
-		final Instant now = Instant.now();
-		final Instant lobbyCutoff = now.minusSeconds(properties.getLobbyInactiveTtlSeconds());
-		final Instant inGameCutoff = now.minusSeconds(properties.getInGameInactiveTtlSeconds());
-		final Instant playerCutoff = now.minusSeconds(properties.getRoomlessPlayerTtlSeconds());
+		final Instant inactiveCutoff = Instant.now().minusSeconds(properties.getCleanupInactiveSeconds());
 
-		// Use the looser cutoff for the initial scan and filter per-room by state.
-		final Instant scanCutoff = inGameCutoff.isAfter(lobbyCutoff) ? inGameCutoff : lobbyCutoff;
-
-		roomRepository.findStaleCodes(scanCutoff)
-			.flatMap(roomRepository::findByCode)
-			.filter(room -> room.lastActivityAt().isBefore(switch (room.state()) {
-				case LOBBY -> lobbyCutoff;
-				case IN_GAME -> inGameCutoff;
-			}))
-			.flatMap(room -> {
-				log.info("Cleanup: deleting stale {} room {} (last activity {})", room.state(), room.code(), room.lastActivityAt());
-				return roomService.deleteRoomInternal(room);
-			})
+		cleanupInactiveRooms(inactiveCutoff)
+			.then(cleanupInactiveRoomlessPlayers(inactiveCutoff))
 			.subscribe();
+	}
 
-		playerRepository.findStaleIds(playerCutoff)
+	private Mono<Void> cleanupInactiveRooms(Instant inactiveCutoff) {
+		return roomRepository.findStaleCodes(inactiveCutoff)
+			.flatMap(roomRepository::findByCode)
+			.filter(room -> room.lastActivityAt().isBefore(inactiveCutoff))
+			.flatMap(room -> cleanupInactivePlayersInRoom(room, inactiveCutoff)
+				.then(Mono.defer(() -> {
+					log.info("Cleanup: deleting stale room {} (state={}, last activity={})", room.code(), room.state(), room.lastActivityAt());
+					return roomService.deleteRoomInternal(room);
+				})))
+			.then();
+	}
+
+	private Mono<Void> cleanupInactivePlayersInRoom(Room room, Instant inactiveCutoff) {
+		return Flux.fromIterable(room.players())
 			.flatMap(playerRepository::findById)
-			.filter(player -> player.roomCode() == null && player.lastActiveAt().isBefore(playerCutoff))
+			.filter(player -> player.lastActiveAt().isBefore(inactiveCutoff))
 			.flatMap(player -> {
-				log.info("Cleanup: deleting inactive roomless player {} (last active {})", player.publicId(), player.lastActiveAt());
+				log.info("Cleanup: deleting inactive player {} from stale room {} (last active={})", player.publicId(), room.code(), player.lastActiveAt());
 				return playerRepository.delete(player.publicId());
 			})
-			.subscribe();
+			.then();
+	}
+
+	private Mono<Void> cleanupInactiveRoomlessPlayers(Instant inactiveCutoff) {
+		return playerRepository.findStaleIds(inactiveCutoff)
+			.flatMap(playerRepository::findById)
+			.filter(player -> player.roomCode() == null && player.lastActiveAt().isBefore(inactiveCutoff))
+			.flatMap(player -> {
+				log.info("Cleanup: deleting inactive roomless player {} (last active={})", player.publicId(), player.lastActiveAt());
+				return playerRepository.delete(player.publicId());
+			})
+			.then();
 	}
 }

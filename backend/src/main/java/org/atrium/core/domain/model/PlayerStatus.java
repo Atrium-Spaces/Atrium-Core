@@ -2,7 +2,7 @@ package org.atrium.core.domain.model;
 
 /**
  * Connection status of a {@link Player} as observed by Atrium. Does not affect game
- * logic — it's only used to drive UI hints and the 60-second disconnect grace timer.
+ * logic — it's only used to drive UI presence hints.
  */
 public enum PlayerStatus {
 	/**
@@ -10,7 +10,7 @@ public enum PlayerStatus {
 	 */
 	ACTIVE,
 	/**
-	 * WebSocket dropped; awaiting reconnect within the grace window.
+	 * WebSocket dropped while the player remained in a room.
 	 */
 	DISCONNECTED
 }

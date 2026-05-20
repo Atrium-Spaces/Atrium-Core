@@ -1,4 +1,4 @@
-package org.atrium.core.spi.listener;
+package org.atrium.core.extension.listener;
 
 /**
  * Default no-op lifecycle listener so core lobby flows do not require a host

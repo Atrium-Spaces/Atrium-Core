@@ -25,17 +25,33 @@ import java.util.List;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RoomBroadcastService {
+public final class RoomBroadcastService {
 
 	private final ReactiveRedisTemplate<String, RoomEvent> eventTemplate;
 	private final ReactiveRedisMessageListenerContainer listenerContainer;
 
+	/**
+	 * Publish a room event onto the room's Redis pub/sub channel.
+	 * The event is delivered to all subscribed WebSocket sessions across all instances.
+	 *
+	 * @param event the room event to publish
+	 * @return the number of subscribers that received the message
+	 */
 	public Mono<Long> publish(RoomEvent event) {
-		final String channel = AtriumConstants.eventChannel(event.roomCode());
-		log.debug("Publishing {} to {}", event.getClass().getSimpleName(), channel);
-		return eventTemplate.convertAndSend(channel, event);
+		return Mono.defer(() -> {
+			final String channel = AtriumConstants.eventChannel(event.roomCode());
+			log.debug("Publishing {} to {}", event.getClass().getSimpleName(), channel);
+			return eventTemplate.convertAndSend(channel, event);
+		});
 	}
 
+	/**
+	 * Subscribe to all events for a given room. Returns a cold Flux that receives
+	 * events from Redis pub/sub until the subscription is cancelled.
+	 *
+	 * @param roomCode the room code
+	 * @return a flux of room events
+	 */
 	public Flux<RoomEvent> subscribe(String roomCode) {
 		final ChannelTopic topic = ChannelTopic.of(AtriumConstants.eventChannel(roomCode));
 		return listenerContainer.receive(List.of(topic), eventTemplate.getSerializationContext().getKeySerializationPair(), eventTemplate.getSerializationContext().getValueSerializationPair())

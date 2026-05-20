@@ -1,6 +1,9 @@
 package org.atrium.core.domain.constant;
 
 import org.atrium.core.autoconfigure.AtriumProperties;
+import org.atrium.core.domain.service.RoomCodeGenerator;
+
+import java.util.UUID;
 
 /**
  * Static constants for the Atrium system. All operator-tunable values live in
@@ -13,7 +16,7 @@ public final class AtriumConstants {
 	}
 
 	/**
-	 * Alphabet used by {@link org.atrium.core.domain.service.RoomCodeGenerator}.
+	 * Alphabet used by {@link RoomCodeGenerator}.
 	 */
 	public static final String ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -22,10 +25,9 @@ public final class AtriumConstants {
 	 */
 	public static final int ROOM_CODE_GENERATION_MAX_ATTEMPTS = 16;
 
-	// ---- Redis key namespaces ----------------------------------------------------------------
-
 	public static final String KEY_PREFIX = "atrium:";
 	public static final String ROOM_KEY_PREFIX = KEY_PREFIX + "room:";
+	public static final String ROOM_VERSION_KEY_PREFIX = KEY_PREFIX + "room:version:";
 	public static final String PLAYER_KEY_PREFIX = KEY_PREFIX + "player:";
 
 	/**
@@ -77,7 +79,6 @@ public final class AtriumConstants {
 	public static final class LeaveReasons {
 		public static final String LEFT = "left";
 		public static final String KICKED = "kicked";
-		public static final String DISCONNECTED = "disconnected";
 
 		private LeaveReasons() {
 		}
@@ -87,8 +88,12 @@ public final class AtriumConstants {
 		return ROOM_KEY_PREFIX + code;
 	}
 
-	public static String playerKey(java.util.UUID publicId) {
+	public static String playerKey(UUID publicId) {
 		return PLAYER_KEY_PREFIX + publicId;
+	}
+
+	public static String roomVersionKey(String code) {
+		return ROOM_VERSION_KEY_PREFIX + code;
 	}
 
 	public static String eventChannel(String roomCode) {

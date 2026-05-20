@@ -8,10 +8,10 @@ import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.domain.constant.AtriumConstants;
 import org.atrium.core.domain.event.RoomEvent;
 import org.atrium.core.domain.model.*;
+import org.atrium.core.extension.listener.GameLifecycleListener;
 import org.atrium.core.redis.repository.PlayerRepository;
 import org.atrium.core.redis.repository.RoomRepository;
 import org.atrium.core.redis.stream.RoomBroadcastService;
-import org.atrium.core.spi.listener.GameLifecycleListener;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -39,7 +39,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RoomService {
+public final class RoomService {
 
 	private final RoomRepository roomRepository;
 	private final PlayerRepository playerRepository;
@@ -50,47 +50,90 @@ public class RoomService {
 	private final GameLifecycleListener gameLifecycleListener;
 	private final AtriumProperties properties;
 
+	/**
+	 * Fetch a room by its code and return its expanded view with player profiles.
+	 *
+	 * @param code the 6-character room code
+	 * @return the room view, or {@link AtriumException#roomNotFound} if missing
+	 */
 	public Mono<RoomView> view(String code) {
 		return roomRepository.findByCode(code)
 			.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
 			.flatMap(viewAssembler::assemble);
 	}
 
+	/**
+	 * List public rooms ordered by most-recently-active first.
+	 *
+	 * @param limit maximum number of rooms to return
+	 * @return a flux of expanded room views
+	 */
 	public Flux<RoomView> listPublic(int limit) {
 		return roomRepository.listPublic(limit).flatMap(viewAssembler::assemble);
 	}
 
-
-	public Mono<RoomView> createRoom(UUID publicId, UUID secretId, @Nullable Integer requestedMaxPlayers, @Nullable GameSettings requestedSettings, boolean isPrivate) {
+	/**
+	 * Create a new room with the authenticated player as host.
+	 *
+	 * @param publicId            the host's public id
+	 * @param secretId            the host's secret id (authenticated against the player store)
+	 * @param requestedMinPlayers optional requested minimum players; uses default or game-setting bounds
+	 * @param requestedMaxPlayers optional requested maximum players; uses default or game-setting bounds
+	 * @param requestedSettings   optional game settings; falls back to {@link DefaultGameSettings}
+	 * @param isPrivate           when true, the room is hidden from the public listing
+	 * @return the expanded room view of the newly created room
+	 */
+	public Mono<RoomView> createRoom(UUID publicId, UUID secretId, @Nullable Integer requestedMinPlayers, @Nullable Integer requestedMaxPlayers, @Nullable GameSettings requestedSettings, boolean isPrivate) {
+		log.debug("Creating room requested by player={} (min={}, max={}, private={})", publicId, requestedMinPlayers, requestedMaxPlayers, isPrivate);
 		return playerService.authenticate(publicId, secretId)
 			.flatMap(player -> {
 				if (player.roomCode() != null) {
 					return Mono.error(AtriumException.conflict("Player is already in room " + player.roomCode()));
 				}
 
-				final int maxPlayers = clampMaxPlayers(requestedMaxPlayers);
 				final GameSettings settings = requestedSettings != null ? requestedSettings : new DefaultGameSettings();
+				final int minPlayers = resolveMinPlayers(requestedMinPlayers, settings);
+				final int maxPlayers = resolveMaxPlayers(requestedMaxPlayers, settings);
+
+				if (minPlayers > maxPlayers) {
+					return Mono.error(AtriumException.badRequest("minPlayers cannot be above maxPlayers"));
+				}
+
 				return codeGenerator.next().flatMap(code -> {
 					final Instant now = Instant.now();
-					final Room room = new Room(code, publicId, List.of(publicId), maxPlayers, settings, isPrivate, RoomState.LOBBY, now, now);
-					return roomRepository.save(room)
+					final Room room = new Room(code, publicId, List.of(publicId), minPlayers, maxPlayers, settings, isPrivate, RoomState.LOBBY, now, now);
+					return roomRepository.saveNew(room)
+						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room code collision during create; please retry")))
 						.then(playerRepository.save(player.withRoomCode(code)))
 						.then(notifyLifecycle(gameLifecycleListener.onRoomCreated(room), AtriumConstants.LifecycleHookNames.ROOM_CREATED, code))
 						.then(viewAssembler.assemble(room));
 				});
-			});
+			})
+			.doOnSuccess(roomView -> log.debug("Room created: code={} host={} players={} state={}", roomView.code(), publicId, roomView.players().size(), roomView.state()));
 	}
 
+	/**
+	 * Join an existing room. Atomic CAS save prevents races on full-room or concurrent
+	 * join scenarios.
+	 *
+	 * @param code     the room code
+	 * @param publicId the joining player's public id
+	 * @param secretId the joining player's secret id
+	 * @return the updated room view
+	 */
 	public Mono<RoomView> joinRoom(String code, UUID publicId, UUID secretId) {
+		log.debug("Join room requested: room={} player={}", code, publicId);
 		return playerService.authenticate(publicId, secretId)
-			.flatMap(player -> roomRepository.findByCode(code)
+			.flatMap(player -> roomRepository.findVersionedByCode(code)
 				.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
-				.flatMap(room -> {
+				.flatMap(versionedRoom -> {
+					final Room room = versionedRoom.room();
 					if (player.roomCode() != null && !player.roomCode().equals(code)) {
 						return Mono.error(AtriumException.conflict("Already in room " + player.roomCode()));
 					}
 
 					if (room.contains(publicId)) {
+						log.debug("Player {} is already in room {}; refreshing player room index", publicId, code);
 						return playerRepository.save(player.withRoomCode(code)).then(viewAssembler.assemble(room));
 					}
 
@@ -106,15 +149,27 @@ public class RoomService {
 					newPlayers.add(publicId);
 					final Room updatedRoom = room.withPlayers(newPlayers);
 					final Player updatedPlayer = player.withRoomCode(code);
-					return roomRepository.save(updatedRoom)
+					return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
+						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry join")))
 						.then(playerRepository.save(updatedPlayer))
 						.then(notifyLifecycle(gameLifecycleListener.onPlayerJoined(updatedRoom, publicId), AtriumConstants.LifecycleHookNames.PLAYER_JOINED, code))
 						.then(viewAssembler.assemble(updatedRoom))
 						.flatMap(roomView -> broadcastService.publish(new RoomEvent.PlayerJoined(code, Instant.now(), viewAssembler.toPlayerView(updatedPlayer, Instant.now()))).thenReturn(roomView));
-				}));
+				}))
+			.doOnSuccess(roomView -> log.debug("Player {} joined room {} (members={})", publicId, code, roomView.players().size()));
 	}
 
+	/**
+	 * Leave a room voluntarily. If the leaving player is the host, the longest-joined
+	 * remaining player is promoted. If the room becomes empty, it is deleted.
+	 *
+	 * @param code     the room code
+	 * @param publicId the leaving player's public id
+	 * @param secretId the leaving player's secret id
+	 * @return an empty mono on successful leave
+	 */
 	public Mono<Void> leaveRoom(String code, UUID publicId, UUID secretId) {
+		log.debug("Leave room requested: room={} player={}", code, publicId);
 		return playerService.authenticate(publicId, secretId).flatMap(ignored -> performLeave(code, publicId, AtriumConstants.LeaveReasons.LEFT));
 	}
 
@@ -122,21 +177,35 @@ public class RoomService {
 	 * Internal leave path used by both the explicit endpoint and the disconnect timer.
 	 * Skips secret-id authentication because the caller is the lobby itself.
 	 */
+	/**
+	 * Internal leave path used by both the explicit endpoint and the cleanup sweep.
+	 * Skips secret-id authentication because the caller is the lobby itself.
+	 * If the room no longer exists, the player's cached roomCode is still cleared.
+	 *
+	 * @param code     the room code
+	 * @param publicId the leaving player's public id
+	 * @param reason   optional reason (e.g. {@code "left"}, {@code "kicked"})
+	 * @return an empty mono on successful leave or no-op if already gone
+	 */
 	public Mono<Void> performLeave(String code, UUID publicId, @Nullable String reason) {
-		return roomRepository.findByCode(code)
-			.switchIfEmpty(Mono.empty())
-			.flatMap(room -> {
+		log.debug("Processing leave: room={} player={} reason={}", code, publicId, reason);
+		return roomRepository.findVersionedByCode(code)
+			.switchIfEmpty(clearPlayerRoomIfMatching(publicId, code)
+				.doOnSuccess(ignored -> log.debug("Leave ignored because room {} no longer exists for player {}", code, publicId))
+				.then(Mono.empty()))
+			.flatMap(versionedRoom -> {
+				final Room room = versionedRoom.room();
 				if (!room.contains(publicId)) {
-					return playerRepository.findById(publicId)
-						.flatMap(player -> playerRepository.save(player.withRoomCode(null)))
-						.then();
+					log.debug("Leave ignored because player {} is not in room {}", publicId, code);
+					return clearPlayerRoomIfMatching(publicId, code);
 				}
 
 				final List<UUID> remaining = new ArrayList<>(room.players());
 				remaining.remove(publicId);
 
 				if (remaining.isEmpty()) {
-					return deleteRoomInternal(room).then(clearPlayerRoom(publicId));
+					log.debug("Last player {} left room {}; deleting room", publicId, code);
+					return deleteRoomInternal(room);
 				}
 
 				final UUID newHost = room.host().equals(publicId) ? remaining.getFirst() : room.host();
@@ -148,26 +217,44 @@ public class RoomService {
 
 				final Mono<Void> publishLeave = broadcastService.publish(new RoomEvent.PlayerLeft(code, Instant.now(), publicId, reason)).then();
 				final Mono<Void> notifyPlayerLeft = notifyLifecycle(gameLifecycleListener.onPlayerLeft(room, publicId, reason), AtriumConstants.LifecycleHookNames.PLAYER_LEFT, code);
-				final Mono<Void> publishHostChanged = newHost.equals(room.host()) ? Mono.empty() : broadcastService.publish(new RoomEvent.HostChanged(code, Instant.now(), newHost)).then();
-				return roomRepository.save(updatedRoom)
-					.then(clearPlayerRoom(publicId))
+				final Mono<Void> publishHostChanged = newHost.equals(room.host())
+					? Mono.empty()
+					: broadcastService.publish(new RoomEvent.HostChanged(code, Instant.now(), newHost))
+					.doOnSuccess(ignored -> log.debug("Host changed in room {} from {} to {}", code, room.host(), newHost))
+					.then();
+				return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
+					.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry leave")))
+					.then(clearPlayerRoomIfMatching(publicId, code))
 					.then(notifyPlayerLeft)
 					.then(publishLeave)
-					.then(publishHostChanged);
+					.then(publishHostChanged)
+					.doOnSuccess(ignored -> log.debug("Player {} left room {} (remainingMembers={})", publicId, code, remaining.size()));
 			});
 	}
 
-	private Mono<Void> clearPlayerRoom(UUID publicId) {
+	private Mono<Void> clearPlayerRoomIfMatching(UUID publicId, String roomCode) {
 		return playerRepository.findById(publicId)
-			.flatMap(player -> playerRepository.save(player.withRoomCode(null)))
+			.flatMap(player -> roomCode.equals(player.roomCode()) ? playerRepository.save(player.withRoomCode(null)).then() : Mono.empty())
 			.then();
 	}
 
+	/**
+	 * Kick a player from the room. Only the host can kick, and the host cannot kick
+	 * themselves. The kicked player's cached roomCode is cleared.
+	 *
+	 * @param code           the room code
+	 * @param publicId       the host's public id
+	 * @param secretId       the host's secret id
+	 * @param targetPublicId the public id of the player to kick
+	 * @return an empty mono on successful kick
+	 */
 	public Mono<Void> kickPlayer(String code, UUID publicId, UUID secretId, UUID targetPublicId) {
+		log.debug("Kick requested: room={} host={} target={}", code, publicId, targetPublicId);
 		return playerService.authenticate(publicId, secretId)
-			.flatMap(ignored -> roomRepository.findByCode(code)
+			.flatMap(ignored -> roomRepository.findVersionedByCode(code)
 				.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
-				.flatMap(room -> {
+				.flatMap(versionedRoom -> {
+					final Room room = versionedRoom.room();
 					if (!room.host().equals(publicId)) {
 						return Mono.error(AtriumException.forbidden("Only the host can kick players"));
 					}
@@ -183,15 +270,27 @@ public class RoomService {
 					final List<UUID> remaining = new ArrayList<>(room.players());
 					remaining.remove(targetPublicId);
 					final Room updatedRoom = room.withPlayers(remaining);
-					return roomRepository.save(updatedRoom)
-						.then(clearPlayerRoom(targetPublicId))
+					return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
+						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry kick")))
+						.then(clearPlayerRoomIfMatching(targetPublicId, code))
 						.then(notifyLifecycle(gameLifecycleListener.onPlayerLeft(room, targetPublicId, AtriumConstants.LeaveReasons.KICKED), AtriumConstants.LifecycleHookNames.PLAYER_LEFT + "(" + AtriumConstants.LeaveReasons.KICKED + ")", code))
 						.then(broadcastService.publish(new RoomEvent.PlayerKicked(code, Instant.now(), targetPublicId)))
 						.then();
-				}));
+				}))
+			.doOnSuccess(ignored -> log.debug("Player {} was kicked from room {} by host {}", targetPublicId, code, publicId));
 	}
 
+	/**
+	 * Delete a room entirely. Only the host can delete. Removes all members and
+	 * broadcasts {@link RoomEvent.RoomDeleted}.
+	 *
+	 * @param code     the room code
+	 * @param publicId the host's public id
+	 * @param secretId the host's secret id
+	 * @return an empty mono on successful deletion
+	 */
 	public Mono<Void> deleteRoom(String code, UUID publicId, UUID secretId) {
+		log.debug("Delete room requested: room={} by player={}", code, publicId);
 		return playerService.authenticate(publicId, secretId)
 			.flatMap(ignored -> roomRepository.findByCode(code)
 				.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
@@ -210,7 +309,7 @@ public class RoomService {
 	Mono<Void> deleteRoomInternal(Room room) {
 		log.info("Deleting room {} ({} player(s))", room.code(), room.players().size());
 		return Flux.fromIterable(room.players())
-			.flatMap(this::clearPlayerRoom)
+			.flatMap(publicId -> clearPlayerRoomIfMatching(publicId, room.code()))
 			.then()
 			.then(roomRepository.delete(room.code()))
 			.then(notifyLifecycle(gameLifecycleListener.onRoomDeleted(room), AtriumConstants.LifecycleHookNames.ROOM_DELETED, room.code()))
@@ -218,19 +317,40 @@ public class RoomService {
 			.then();
 	}
 
+	/**
+	 * Transition a room from {@link RoomState#LOBBY} to {@link RoomState#IN_GAME}.
+	 * Validates minimum player count and host permission.
+	 *
+	 * @param code     the room code
+	 * @param publicId the host's public id
+	 * @param secretId the host's secret id
+	 * @return the updated room view
+	 */
 	public Mono<RoomView> startGame(String code, UUID publicId, UUID secretId) {
+		log.debug("Start game requested: room={} host={}", code, publicId);
 		return transitionState(code, publicId, secretId, RoomState.LOBBY, RoomState.IN_GAME, "start");
 	}
 
+	/**
+	 * Transition a room from {@link RoomState#IN_GAME} back to {@link RoomState#LOBBY}.
+	 * Keeps the player roster intact.
+	 *
+	 * @param code     the room code
+	 * @param publicId the host's public id
+	 * @param secretId the host's secret id
+	 * @return the updated room view
+	 */
 	public Mono<RoomView> stopGame(String code, UUID publicId, UUID secretId) {
+		log.debug("Stop game requested: room={} host={}", code, publicId);
 		return transitionState(code, publicId, secretId, RoomState.IN_GAME, RoomState.LOBBY, "stop");
 	}
 
 	private Mono<RoomView> transitionState(String code, UUID publicId, UUID secretId, RoomState expected, RoomState next, String label) {
 		return playerService.authenticate(publicId, secretId)
-			.flatMap(ignored -> roomRepository.findByCode(code)
+			.flatMap(ignored -> roomRepository.findVersionedByCode(code)
 				.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
-				.flatMap(room -> {
+				.flatMap(versionedRoom -> {
+					final Room room = versionedRoom.room();
 					if (!room.host().equals(publicId)) {
 						return Mono.error(AtriumException.forbidden("Only the host can " + label + " the game"));
 					}
@@ -239,19 +359,40 @@ public class RoomService {
 						return Mono.error(AtriumException.conflict("Room is not in state " + expected));
 					}
 
+					if (next == RoomState.IN_GAME && room.players().size() < room.minPlayers()) {
+						return Mono.error(AtriumException.conflict("Need at least " + room.minPlayers() + " players to start the game"));
+					}
+
 					final Room updatedRoom = room.withState(next);
-					return roomRepository.save(updatedRoom)
+					return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
+						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry state transition")))
 						.then(next == RoomState.IN_GAME ? notifyLifecycle(gameLifecycleListener.onGameStarted(updatedRoom), AtriumConstants.LifecycleHookNames.GAME_STARTED, code) : notifyLifecycle(gameLifecycleListener.onGameStopped(updatedRoom), AtriumConstants.LifecycleHookNames.GAME_STOPPED, code))
 						.then(viewAssembler.assemble(updatedRoom))
 						.flatMap(roomView -> broadcastService.publish(new RoomEvent.StateChanged(code, Instant.now(), next)).thenReturn(roomView));
-				}));
+				}))
+			.doOnSuccess(roomView -> log.debug("Room {} state transition complete: {} -> {} by host {}", code, expected, next, publicId));
 	}
 
-	public Mono<RoomView> updateSettings(String code, UUID publicId, UUID secretId, @Nullable Integer maxPlayers, @Nullable GameSettings gameSettings, @Nullable Boolean isPrivate) {
+	/**
+	 * Update room settings. Only the host can change settings, and only while the room
+	 * is in {@link RoomState#LOBBY}. Any field left {@code null} keeps its current value.
+	 *
+	 * @param code         the room code
+	 * @param publicId     the host's public id
+	 * @param secretId     the host's secret id
+	 * @param minPlayers   optional new minimum player count
+	 * @param maxPlayers   optional new maximum player count
+	 * @param gameSettings optional new game settings
+	 * @param isPrivate    optional new private flag
+	 * @return the updated room view
+	 */
+	public Mono<RoomView> updateSettings(String code, UUID publicId, UUID secretId, @Nullable Integer minPlayers, @Nullable Integer maxPlayers, @Nullable GameSettings gameSettings, @Nullable Boolean isPrivate) {
+		log.debug("Update settings requested: room={} host={} min={} max={} private={}", code, publicId, minPlayers, maxPlayers, isPrivate);
 		return playerService.authenticate(publicId, secretId)
-			.flatMap(ignored -> roomRepository.findByCode(code)
+			.flatMap(ignored -> roomRepository.findVersionedByCode(code)
 				.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
-				.flatMap(room -> {
+				.flatMap(versionedRoom -> {
+					final Room room = versionedRoom.room();
 					if (!room.host().equals(publicId)) {
 						return Mono.error(AtriumException.forbidden("Only the host can change room settings"));
 					}
@@ -260,18 +401,28 @@ public class RoomService {
 						return Mono.error(AtriumException.conflict("Settings can only change in the lobby"));
 					}
 
-					final int newMaxPlayers = maxPlayers != null ? clampMaxPlayers(maxPlayers) : room.maxPlayers();
+					final GameSettings newSettings = gameSettings != null ? gameSettings : room.gameSettings();
+					final int requestedOrCurrentMinPlayers = minPlayers != null ? minPlayers : room.minPlayers();
+					final int requestedOrCurrentMaxPlayers = maxPlayers != null ? maxPlayers : room.maxPlayers();
+					final int newMinPlayers = resolveMinPlayers(requestedOrCurrentMinPlayers, newSettings);
+					final int newMaxPlayers = resolveMaxPlayers(requestedOrCurrentMaxPlayers, newSettings);
+
+					if (newMinPlayers > newMaxPlayers) {
+						return Mono.error(AtriumException.badRequest("minPlayers cannot be above maxPlayers"));
+					}
+
 					if (newMaxPlayers < room.players().size()) {
 						return Mono.error(AtriumException.badRequest("maxPlayers cannot be below current member count (" + room.players().size() + ")"));
 					}
 
-					final GameSettings newSettings = gameSettings != null ? gameSettings : room.gameSettings();
 					final boolean newPrivate = isPrivate != null ? isPrivate : room.isPrivate();
-					final Room updatedRoom = room.withSettings(newMaxPlayers, newSettings, newPrivate);
-					return roomRepository.save(updatedRoom)
+					final Room updatedRoom = room.withSettings(newMinPlayers, newMaxPlayers, newSettings, newPrivate);
+					return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
+						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry settings update")))
 						.then(viewAssembler.assemble(updatedRoom))
 						.flatMap(roomView -> broadcastService.publish(new RoomEvent.SettingsChanged(code, Instant.now(), roomView)).thenReturn(roomView));
-				}));
+				}))
+			.doOnSuccess(roomView -> log.debug("Room {} settings updated by host {}", code, publicId));
 	}
 
 	/**
@@ -283,14 +434,23 @@ public class RoomService {
 		if (roomCode == null) {
 			return Mono.empty();
 		} else {
+			log.debug("Broadcasting profile update for player {} in room {}", player.publicId(), roomCode);
 			return broadcastService.publish(new RoomEvent.PlayerUpdated(roomCode, Instant.now(), viewAssembler.toPlayerView(player, Instant.now()))).then();
 		}
 	}
 
+	/**
+	 * Mark a player as {@link PlayerStatus#DISCONNECTED} and broadcast
+	 * {@link RoomEvent.PlayerDisconnected} if they are in a room.
+	 *
+	 * @param publicId the player's public id
+	 * @return an empty mono on completion
+	 */
 	public Mono<Void> markDisconnected(UUID publicId) {
 		return playerRepository.findById(publicId)
 			.flatMap(player -> {
 				final String roomCode = player.roomCode();
+				log.debug("Marking player {} as DISCONNECTED (room={})", publicId, roomCode);
 				final Mono<Void> save = playerRepository.save(player.withStatus(PlayerStatus.DISCONNECTED)).then();
 
 				if (roomCode == null) {
@@ -301,10 +461,18 @@ public class RoomService {
 			});
 	}
 
+	/**
+	 * Mark a player as {@link PlayerStatus#ACTIVE} and broadcast
+	 * {@link RoomEvent.PlayerReconnected} if they are in a room.
+	 *
+	 * @param publicId the player's public id
+	 * @return an empty mono on completion
+	 */
 	public Mono<Void> markReconnected(UUID publicId) {
 		return playerRepository.findById(publicId)
 			.flatMap(player -> {
 				final String roomCode = player.roomCode();
+				log.debug("Marking player {} as ACTIVE (room={})", publicId, roomCode);
 				final Mono<Void> save = playerRepository.save(player.withStatus(PlayerStatus.ACTIVE)).then();
 
 				if (roomCode == null) {
@@ -315,18 +483,81 @@ public class RoomService {
 			});
 	}
 
-	// ---- helpers -----------------------------------------------------------------------------
-
-	private int clampMaxPlayers(@Nullable Integer requested) {
-		int requestedMaxPlayers = requested != null ? requested : properties.getDefaultMaxPlayers();
-		if (requestedMaxPlayers < 1) {
-			throw AtriumException.badRequest("maxPlayers must be at least 1");
+	/**
+	 * Resolves the effective minimum number of players for a room, applying game-specific
+	 * bounds from {@link GameSettings#absoluteMinPlayersOverride()} and
+	 * {@link GameSettings#absoluteMaxPlayersOverride()}.
+	 *
+	 * @param requestedMinPlayers the requested value, or {@code null} to use the default
+	 * @param gameSettings        the game settings providing optional bounds overrides
+	 * @return the validated minPlayers value within the game's absolute bounds
+	 * @throws AtriumException if the requested value is outside the absolute bounds
+	 */
+	private int resolveMinPlayers(@Nullable Integer requestedMinPlayers, GameSettings gameSettings) {
+		final int minimumAllowedPlayers = effectiveAbsoluteMinPlayers(gameSettings);
+		final int maximumAllowedPlayers = effectiveAbsoluteMaxPlayers(gameSettings);
+		final int requestedOrDefaultMinPlayers = requestedMinPlayers != null ? requestedMinPlayers : properties.getDefaultMinPlayers();
+		if (requestedOrDefaultMinPlayers < minimumAllowedPlayers) {
+			throw AtriumException.badRequest("minPlayers must be at least " + minimumAllowedPlayers);
 		}
-		return Math.min(requestedMaxPlayers, properties.getAbsoluteMaxPlayers());
+		if (requestedOrDefaultMinPlayers > maximumAllowedPlayers) {
+			throw AtriumException.badRequest("minPlayers must not exceed " + maximumAllowedPlayers);
+		}
+		return requestedOrDefaultMinPlayers;
 	}
 
 	/**
-	 * Lifecycle SPI hooks should not break the core lobby flow. A failing listener is
+	 * Resolves the effective maximum number of players for a room, applying game-specific
+	 * bounds from {@link GameSettings#absoluteMinPlayersOverride()} and
+	 * {@link GameSettings#absoluteMaxPlayersOverride()}.
+	 *
+	 * @param requestedMaxPlayers the requested value, or {@code null} to use the default
+	 * @param gameSettings        the game settings providing optional bounds overrides
+	 * @return the validated maxPlayers value within the game's absolute bounds
+	 * @throws AtriumException if the requested value is outside the absolute bounds
+	 */
+	private int resolveMaxPlayers(@Nullable Integer requestedMaxPlayers, GameSettings gameSettings) {
+		final int minimumAllowedPlayers = effectiveAbsoluteMinPlayers(gameSettings);
+		final int maximumAllowedPlayers = effectiveAbsoluteMaxPlayers(gameSettings);
+		final int requestedOrDefaultMaxPlayers = requestedMaxPlayers != null ? requestedMaxPlayers : properties.getDefaultMaxPlayers();
+		if (requestedOrDefaultMaxPlayers < minimumAllowedPlayers) {
+			throw AtriumException.badRequest("maxPlayers must be at least " + minimumAllowedPlayers);
+		}
+		if (requestedOrDefaultMaxPlayers > maximumAllowedPlayers) {
+			throw AtriumException.badRequest("maxPlayers must not exceed " + maximumAllowedPlayers);
+		}
+		return requestedOrDefaultMaxPlayers;
+	}
+
+	private int effectiveAbsoluteMinPlayers(GameSettings gameSettings) {
+		final Integer absoluteMinPlayersOverride = gameSettings.absoluteMinPlayersOverride();
+		final Integer absoluteMaxPlayersOverride = gameSettings.absoluteMaxPlayersOverride();
+		final int gameSettingMinimumPlayers = absoluteMinPlayersOverride != null ? absoluteMinPlayersOverride : properties.getAbsoluteMinPlayers();
+		final int gameSettingMaximumPlayers = absoluteMaxPlayersOverride != null ? absoluteMaxPlayersOverride : properties.getAbsoluteMaxPlayers();
+		validateAbsoluteBounds(gameSettingMinimumPlayers, gameSettingMaximumPlayers);
+		return gameSettingMinimumPlayers;
+	}
+
+	private int effectiveAbsoluteMaxPlayers(GameSettings gameSettings) {
+		final Integer absoluteMinPlayersOverride = gameSettings.absoluteMinPlayersOverride();
+		final Integer absoluteMaxPlayersOverride = gameSettings.absoluteMaxPlayersOverride();
+		final int gameSettingMinimumPlayers = absoluteMinPlayersOverride != null ? absoluteMinPlayersOverride : properties.getAbsoluteMinPlayers();
+		final int gameSettingMaximumPlayers = absoluteMaxPlayersOverride != null ? absoluteMaxPlayersOverride : properties.getAbsoluteMaxPlayers();
+		validateAbsoluteBounds(gameSettingMinimumPlayers, gameSettingMaximumPlayers);
+		return gameSettingMaximumPlayers;
+	}
+
+	private static void validateAbsoluteBounds(int absoluteMinPlayers, int absoluteMaxPlayers) {
+		if (absoluteMinPlayers < 1) {
+			throw AtriumException.badRequest("absoluteMinPlayers must be at least 1");
+		}
+		if (absoluteMaxPlayers < absoluteMinPlayers) {
+			throw AtriumException.badRequest("absoluteMaxPlayers must be at least absoluteMinPlayers");
+		}
+	}
+
+	/**
+	 * Lifecycle extension hooks should not break the core lobby flow. A failing listener is
 	 * logged and ignored so room mutations still complete.
 	 */
 	private Mono<Void> notifyLifecycle(Mono<Void> hook, String hookName, String roomCode) {

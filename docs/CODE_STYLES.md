@@ -21,18 +21,18 @@ Backend Java packages follow the same rule (`core.domain.model`, `core.domain.se
 Package names, class / interface names, method names, variable names, parameter names, and
 field names must spell out their meaning in full.
 
-- ✅ `recipes.forEach((recipe) => { … })`
-- ❌ `recipes.forEach((r) => { … })`
-- ✅ `for (const ingredient of ingredients) { … }`
-- ❌ `for (const ing of ingredients) { … }`
+- ✅ `recipes.forEach((recipe) => { ... })`
+- ❌ `recipes.forEach((r) => { ... })`
+- ✅ `for (const ingredient of ingredients) { ... }`
+- ❌ `for (const ing of ingredients) { ... }`
 
 **Allowed exceptions:**
 
 | Context           | Allowed                                 | Example                                       |
 |-------------------|-----------------------------------------|-----------------------------------------------|
-| Caught exceptions | `e`, `ex`                               | `} catch (Exception e) { … }`                 |
+| Caught exceptions | `e`, `ex`                               | `} catch (Exception e) { ... }`                 |
 | Transloco let     | `t`                                     | `*transloco="let t"`                          |
-| Loop indices      | `i`, `j`, `k`                           | `for (int i = 0; i < length; i++) { … }`      |
+| Loop indices      | `i`, `j`, `k`                           | `for (int i = 0; i < length; i++) { ... }`      |
 | Common idioms     | `id`, `lat`, `lon`, `min`, `max`, `dto` | These are de-facto whole words in our domain. |
 | Library type echo | match the imported class                | `FileRef fileRef = new FileRef();`            |
 
@@ -63,7 +63,7 @@ makes refactor-rename across the file trivial.
 
 The split keeps player-facing copy consistent with Hong Kong / UK readers, while
 keeping API and code identifiers on the de-facto American convention every framework
-and library already uses (`localStorage`, `Color`, `behavior` events, …). When in
+and library already uses (`localStorage`, `Color`, `behavior` events, ...). When in
 doubt: prose-British, code-American.
 
 ## 2. Formatting
@@ -133,9 +133,9 @@ Every file ends with **exactly one** trailing newline (one blank line at EOF, no
 
 ### 2.4 String quotes
 
-- **TypeScript**: double quotes `"…"` for ordinary strings; backticks for template literals
+- **TypeScript**: double quotes `"..."` for ordinary strings; backticks for template literals
   only when interpolating.
-- **Java**: standard `"…"` — text blocks (`"""…"""`) for multi-line SQL / JSON / GraphQL.
+- **Java**: standard `"..."` — text blocks (`"""..."""`) for multi-line SQL / JSON / GraphQL.
 - **HTML attributes**: double quotes only.
 - **JSON**: double quotes (RFC 8259 — there is no choice).
 
@@ -149,7 +149,7 @@ a predictable spot.
 The grouping order, top to bottom (skip groups that don't apply):
 
 1. **Angular framework** — `@angular/*`.
-2. **Third-party / external packages** — `@jsverse/transloco`, `leaflet`, `primeng/*`, `rxjs`, …
+2. **Third-party / external packages** — `@jsverse/transloco`, `leaflet`, `primeng/*`, `rxjs`, ...
 3. **Internal modules** — `../core/...`, `../component/...`, anything under `src/app/`.
 
 ```ts
@@ -189,7 +189,7 @@ Anything under `backend/src/main/java/org/atrium/core/` is part of the reusable
 - not depend on game-specific code (no `import com.somegame.*`);
 - expose extension points through Spring beans + Jackson `@JsonTypeInfo` polymorphism
   (see {@link org.atrium.core.domain.model.GameSettings}) rather than hard-coded enums;
-- self-wire via `LobbyAutoConfiguration` so a downstream project gets every bean by
+- self-wire via `AtriumAutoConfiguration` so a downstream project gets every bean by
   declaring the Gradle dependency alone.
 
 The reference host application (`org.atrium.Application`) lives outside `core/` and
@@ -230,7 +230,7 @@ No `template:` or `styles:` inline blocks in `@Component(...)` — even one-line
 ### 3.5 PrimeNG severities for status colour
 
 Use PrimeNG's `severity` palette (`info`, `success`, `warn`, `error`, `secondary`) and
-design tokens (`var(--p-text-muted-color)`, `var(--p-content-border-color)`, …) for status /
+design tokens (`var(--p-text-muted-color)`, `var(--p-content-border-color)`, ...) for status /
 chrome colour. Custom hex colours are reserved for **domain colour codes** (OSM zone categories,
 ingredient category badges).
 
@@ -265,19 +265,11 @@ of which we use much here).
 - The frontend's TypeScript counterpart is `strictNullChecks: true` (already on by default
   in our `tsconfig`).
 
-### 3.9 fastutil over JDK collections
+### 3.9 JDK collections by default
 
-For tight hot-path code (the lobby's room / player iteration loops, future game-engine
-state stores), prefer fastutil's primitive-keyed and primitive-valued collections:
-
-- `Object2ObjectOpenHashMap` instead of `HashMap`
-- `Long2ObjectOpenHashMap`, `Object2IntOpenHashMap`, etc. when keys/values are primitives
-- `ObjectArrayList`, `IntArrayList` for typed lists
-- `ObjectLists.emptyList()` instead of `Collections.emptyList()`
-
-Use JDK collections only when crossing a public API boundary that already commits to
-JDK types (records returned to Jackson, Spring repositories, reactive `Flux` /
-`Mono`, …).
+Use JDK collections (`ArrayList`, `HashMap`, `List.copyOf`, `Map.of`) by default.
+Bring in specialised collection libraries only with a measured benchmark that shows
+material wins on a real Atrium hot path.
 
 ### 3.10 Internationalised strings
 
@@ -289,7 +281,7 @@ JDK types (records returned to Jackson, Spring repositories, reactive `Flux` /
 - **Translation-key parity is mandatory.** Every key present in `en.json` must also be present
   in `zh.json` (and any future locale). The resolver falls back to English at runtime, but a
   missing key in a locale file is a bug — review the diff before merging. A simple guard:
-  `jq -r 'paths(scalars) | join(".")' en.json zh.json | sort -u | …` should produce identical
+  `jq -r 'paths(scalars) | join(".")' en.json zh.json | sort -u | ...` should produce identical
   key lists.
 
 ### 3.11 Locale-aware UI formatting
@@ -318,7 +310,7 @@ thousand separator, date order) follows the player's locale.
 
 Treat compiler / IntelliJ / TS-Server / ESLint warnings as errors. If a warning is genuinely
 not applicable, suppress it locally with the narrowest possible annotation
-(`@SuppressWarnings("…")`, `// eslint-disable-next-line …`) and a one-line comment explaining
+(`@SuppressWarnings("...")`, `// eslint-disable-next-line ...`) and a one-line comment explaining
 why. Don't broad-suppress at the file or module level.
 
 ### 3.14 Networking — reactive, event-driven, Redis-backed
@@ -327,18 +319,17 @@ Full architecture in [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) and the lobby
 specifics in [`docs/LOBBY.md`](./LOBBY.md). The short list every contributor must obey
 when adding a new endpoint, event, or state mutation:
 
-1. **REST stays reactive.** Every controller method returns `Mono<…>` or `Flux<…>`.
+1. **REST stays reactive.** Every controller method returns `Mono<...>` or `Flux<...>`.
    Don't block on `Mono.block()` inside the request thread — push the work back to the
    reactor pipeline. Long-running work goes on
    `Schedulers.boundedElastic()`.
-2. **Redis is the source of truth for room and player state.** In-memory caches inside
-   services are for transient scheduling only (e.g. {@link
-   org.atrium.core.domain.service.DisconnectTracker}'s timer map). On every mutation, re-read
-   the entity from Redis before mutating — the lobby is multi-instance-safe by design.
+2. **Redis is the source of truth for room and player state.** On every mutation,
+   re-read the entity from Redis before mutating — the lobby is multi-instance-safe
+   by design.
 3. **State changes broadcast through Redis pub/sub, never directly to WebSocket
-   sessions.** A controller mutating a room must `publish(new RoomEvent.…)` afterwards;
+   sessions.** A controller mutating a room must `publish(new RoomEvent....)` afterwards;
    the WebSocket handler subscribes to the channel and forwards. Direct
-   session.send(…) bypasses the multi-instance fan-out.
+   session.send(...) bypasses the multi-instance fan-out.
 4. **Events are polymorphic and self-describing.** Every event variant under
    {@link org.atrium.core.domain.event.RoomEvent} carries `roomCode` + `emittedAt` plus its
    own payload. No sequence numbers, no implicit ordering — clients dedupe by
@@ -350,12 +341,26 @@ when adding a new endpoint, event, or state mutation:
    the result via the WebSocket fan-out. The handler today accepts incoming frames
    only to keep the socket alive — game-specific messages should mount their own
    handler at a different path.
-7. **Disconnect is a soft event.** A dropped WebSocket flips the player to
-   {@code DISCONNECTED} and schedules a leave after the grace period; a reconnect
-   inside the window cancels it. Don't bypass {@link
-   org.atrium.core.domain.service.DisconnectTracker} — restart-resilience is its job.
+7. **Disconnect is a soft presence event.** A dropped WebSocket flips the player to
+   {@code DISCONNECTED}; reconnect flips them back to {@code ACTIVE}. Membership
+   changes happen via explicit leave/kick/delete paths or scheduled inactivity cleanup
+   (driven by {@code atrium.core.cleanup-inactive-seconds}).
 
-## 4. Testing
+## 4. Known design limitations
+
+These are acknowledged trade-offs in the current MVP that future iterations may
+address:
+
+- **`PlayerView.joinedAt` uses room creation time.** The domain model does not
+  track per-player join timestamps. The `joinedAt` field is populated with
+  `Room.createdAt()` for all members. See `docs/LOBBY.md §7`.
+- **No connection-grace auto-leave.** A dropped WebSocket marks the player
+  `DISCONNECTED`, but no delayed timer removes them from the room. Only explicit
+  leave/kick/delete paths or the inactivity sweep can remove disconnected players.
+- **Zero test coverage.** Tests are planned but not yet implemented. See §5
+  below for the testing strategy.
+
+## 5. Testing
 
 - **Backend**: JUnit 5 (`@Test` from `org.junit.jupiter.api`). One test class per production
   class, named `<Class>Test`, located at the mirror path under `backend/src/test/java/`.
@@ -367,7 +372,7 @@ when adding a new endpoint, event, or state mutation:
   anything meaningful is worse than no test.
 - Aim for tests on:
 	- All branches of pure utility functions (`RoomCodeGenerator`, name / avatar
-	  sanitisation, …).
+	  sanitisation, ...).
 	- Every state-mutating method on {@link org.atrium.core.domain.service.RoomService}
 	  (create / join / leave / kick / delete / start / stop / settings update).
 	- Each REST endpoint's happy path + at least one failure path.
@@ -380,4 +385,4 @@ when adding a new endpoint, event, or state mutation:
   `docs/ARCHITECTURE.md`, `docs/API.md`, `docs/LOBBY.md`.
 - Public Java types use Javadoc; public TS types use JSDoc / TSDoc.
 - The auto-generated REST contract lives in `docs/API.md`; keep it in sync with the
-  shape of `LobbyController` and the DTOs under `org.atrium.core.api.dto`.
+  shape of `AtriumController` and the DTOs under `org.atrium.core.api.dto`.

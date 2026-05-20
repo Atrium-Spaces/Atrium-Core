@@ -48,8 +48,10 @@ public class PlayerService {
 	 */
 	public Mono<IdentityResult> ensureIdentity(@Nullable UUID publicId, @Nullable UUID secretId, @Nullable String requestedName, @Nullable String requestedAvatar) {
 		if (publicId == null || secretId == null) {
+			log.debug("No identity provided; minting fresh player identity");
 			return Mono.just(new IdentityResult(mintFresh(requestedName, requestedAvatar), true));
 		} else {
+			log.debug("Ensuring identity for player {}", publicId);
 			return playerRepository.findById(publicId)
 				.flatMap(storedPlayer -> {
 					if (!storedPlayer.secretId().equals(secretId)) {
@@ -67,7 +69,10 @@ public class PlayerService {
 
 					return playerRepository.save(updatedPlayer).map(savedPlayer -> new IdentityResult(savedPlayer, false));
 				})
-				.switchIfEmpty(Mono.just(new IdentityResult(mintFresh(requestedName, requestedAvatar), true)))
+				.switchIfEmpty(Mono.fromSupplier(() -> {
+					log.debug("No player found for public id {}; minting fresh identity", publicId);
+					return new IdentityResult(mintFresh(requestedName, requestedAvatar), true);
+				}))
 				.flatMap(result -> result.freshIdentity() ? playerRepository.save(result.player()).map(saved -> new IdentityResult(saved, true)) : Mono.just(result));
 		}
 	}
@@ -80,18 +85,42 @@ public class PlayerService {
 		return new Player(publicId, secretId, name, avatar, null, PlayerStatus.ACTIVE, Instant.now());
 	}
 
+	/**
+	 * Authenticate a player by their public/secret id pair. Every write endpoint calls
+	 * this before mutating state.
+	 *
+	 * @param publicId the player's public id
+	 * @param secretId the player's secret id
+	 * @return the authenticated player
+	 * @throws AtriumException if the pair doesn't match or the player doesn't exist
+	 */
 	public Mono<Player> authenticate(UUID publicId, UUID secretId) {
+		log.debug("Authenticating player {}", publicId);
 		return playerRepository.findById(publicId)
 			.switchIfEmpty(Mono.error(AtriumException.playerNotFound()))
-			.flatMap(player -> player.secretId().equals(secretId) ? Mono.just(player) : Mono.error(AtriumException.badCredentials()));
+			.flatMap(player -> player.secretId().equals(secretId)
+				? Mono.just(player)
+				: Mono.error(AtriumException.badCredentials()))
+			.doOnSuccess(player -> log.debug("Authentication succeeded for player {}", player.publicId()));
 	}
 
+	/**
+	 * Update a player's display name and avatar. The profile change is broadcast to
+	 * the player's current room peers via {@link RoomService#broadcastProfileUpdate}.
+	 *
+	 * @param publicId the player's public id
+	 * @param secretId the player's secret id
+	 * @param name     the new display name
+	 * @param avatar   the new avatar string
+	 * @return the updated player
+	 */
 	public Mono<Player> updateProfile(UUID publicId, UUID secretId, String name, String avatar) {
+		log.debug("Updating profile for player {}", publicId);
 		return authenticate(publicId, secretId)
 			.map(player -> player.withProfile(cleanName(name), cleanAvatar(avatar)))
-			.flatMap(playerRepository::save);
+			.flatMap(playerRepository::save)
+			.doOnSuccess(player -> log.debug("Profile updated for player {}", player.publicId()));
 	}
-
 
 	/**
 	 * Return the room the given player is currently in, repairing the cached index if
@@ -100,6 +129,7 @@ public class PlayerService {
 	 * @return the room when membership is confirmed, or empty {@link Mono} otherwise
 	 */
 	public Mono<Room> resolveRoom(UUID publicId) {
+		log.debug("Resolving room for player {}", publicId);
 		return playerRepository.findById(publicId)
 			.flatMap(player -> {
 				final String cachedCode = player.roomCode();
@@ -108,8 +138,8 @@ public class PlayerService {
 					return Mono.empty();
 				} else {
 					return roomRepository.findByCode(cachedCode)
-						.flatMap(room -> room.contains(publicId) ? Mono.just(room) : repairAndResolve(player))
-						.switchIfEmpty(repairAndResolve(player));
+						.flatMap(room -> room.contains(publicId) ? Mono.just(room) : Mono.defer(() -> repairAndResolve(player)))
+						.switchIfEmpty(Mono.defer(() -> repairAndResolve(player)));
 				}
 			});
 	}
@@ -120,7 +150,7 @@ public class PlayerService {
 			.filter(room -> room.contains(player.publicId()))
 			.next()
 			.flatMap(found -> playerRepository.save(player.withRoomCode(found.code())).thenReturn(found))
-			.switchIfEmpty(playerRepository.save(player.withRoomCode(null)).then(Mono.empty()));
+			.switchIfEmpty(Mono.defer(() -> playerRepository.save(player.withRoomCode(null)).then(Mono.empty())));
 	}
 
 	private String cleanName(@Nullable String name) {

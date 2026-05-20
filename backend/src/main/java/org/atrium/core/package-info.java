@@ -14,10 +14,11 @@
  *   <li>Spring Boot auto-configuration
  *       ({@link org.atrium.core.autoconfigure.AtriumAutoConfiguration}) so the library can be
  *       dropped in as a dependency.</li>
+ *   <li>Extension hooks under {@code org.atrium.core.extension.*} for host-specific
+ *       lifecycle integration.</li>
  * </ul>
  *
- * <p>Redis is the single source of truth for room and player state; the in-memory
- * services hold only transient scheduling data (e.g. disconnect timers).
+ * <p>Redis is the single source of truth for room and player state.
  */
 @NullMarked
 package org.atrium.core;

@@ -2,12 +2,11 @@ package org.atrium.core.websocket;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.atrium.core.domain.constant.AtriumConstants;
+import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.domain.event.RoomEvent;
-import org.atrium.core.domain.service.DisconnectTracker;
+import org.atrium.core.domain.model.PlayerStatus;
 import org.atrium.core.domain.service.PlayerService;
 import org.atrium.core.domain.service.RoomService;
 import org.atrium.core.redis.config.RedisAtriumConfiguration;
@@ -22,6 +21,7 @@ import reactor.core.publisher.Mono;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,14 +29,13 @@ import java.util.UUID;
  * WebFlux WebSocket handler bridging Redis pub/sub events into a client session.
  *
  * <p>Mounted at {@code /api/atrium/ws/{code}} by
- * {@link RedisAtriumConfiguration#atriumWebSocketHandlerMapping(RoomWebSocketHandler, org.atrium.core.autoconfigure.AtriumProperties)}.
+ * {@link RedisAtriumConfiguration#atriumWebSocketHandlerMapping(RoomWebSocketHandler, AtriumProperties)}.
  * The client must include {@code publicId} and {@code secretId} as query parameters
  * (e.g. {@code wss://host/api/atrium/ws/ABCDEF?publicId=...&secretId=...}). On open:
  *
  * <ol>
  *   <li>Authenticate the public / secret pair.</li>
- *   <li>Cancel any pending {@link DisconnectTracker} timer for this player.</li>
- *   <li>Mark the player {@link org.atrium.core.domain.model.PlayerStatus#ACTIVE} and emit a
+ *   <li>Mark the player {@link PlayerStatus#ACTIVE} and emit a
  *       {@link RoomEvent.PlayerReconnected} if they had been disconnected.</li>
  *   <li>Send a {@link RoomEvent.Snapshot} as the first message so the client can
  *       hydrate its UI without a separate REST call.</li>
@@ -44,24 +43,25 @@ import java.util.UUID;
  *       JSON text frame.</li>
  * </ol>
  *
- * <p>On close: mark {@link org.atrium.core.domain.model.PlayerStatus#DISCONNECTED} and
- * schedule the {@link RoomService#performLeave} call via {@link DisconnectTracker}.
+ * <p>On close: members are marked {@link PlayerStatus#DISCONNECTED}.
+ * Spectator connections (player not currently in {@code code}) do not toggle
+ * connection status.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RoomWebSocketHandler implements WebSocketHandler {
+public final class RoomWebSocketHandler implements WebSocketHandler {
 
 	private final PlayerService playerService;
 	private final RoomService roomService;
 	private final RoomBroadcastService broadcastService;
-	private final DisconnectTracker disconnectTracker;
 	private final ObjectMapper objectMapper;
 
 	@Override
 	public Mono<Void> handle(WebSocketSession session) {
 		final String code = extractRoomCode(session);
 		final Map<String, String> params = queryParams(session);
+		log.debug("WebSocket connection attempt for room {}", code);
 		final UUID publicId;
 		final UUID secretId;
 
@@ -79,14 +79,20 @@ public class RoomWebSocketHandler implements WebSocketHandler {
 				return session.close().then(Mono.empty());
 			})
 			.flatMap(player -> {
-				if (player.roomCode() == null || !player.roomCode().equals(code)) {
+				final boolean isRoomMember = code.equals(player.roomCode());
+				log.debug("WebSocket authenticated for player {} on room {} (member={})", publicId, code, isRoomMember);
+				if (!isRoomMember) {
 					log.debug("Player {} not a member of room {} — spectator subscription", publicId, code);
 				}
 
-				disconnectTracker.cancel(publicId);
-				return roomService.markReconnected(publicId).thenReturn(player);
+				if (isRoomMember) {
+					return roomService.markReconnected(publicId).thenReturn(player);
+				} else {
+					return Mono.just(player);
+				}
 			})
-			.flatMap(player -> {
+			.flatMap(ignored -> {
+				log.debug("WebSocket stream started for player {} on room {}", publicId, code);
 				final Mono<WebSocketMessage> snapshot = roomService.view(code)
 					.map(roomView -> new RoomEvent.Snapshot(code, Instant.now(), roomView))
 					.map(event -> serialise(session, event));
@@ -100,14 +106,24 @@ public class RoomWebSocketHandler implements WebSocketHandler {
 
 				final Mono<Void> closure = session.closeStatus()
 					.doOnNext(status -> log.debug("WebSocket closed for {} on {}: {}", publicId, code, status))
-					.then(onDisconnect(publicId, code));
+					.then(Mono.defer(() -> onDisconnect(publicId, code)));
 
 				return Mono.when(session.send(outbound), inbound, closure);
 			});
 	}
 
 	private Mono<Void> onDisconnect(UUID publicId, String code) {
-		return roomService.markDisconnected(publicId).then(Mono.fromRunnable(() -> disconnectTracker.scheduleLeave(publicId, roomService.performLeave(code, publicId, AtriumConstants.LeaveReasons.DISCONNECTED))));
+		log.debug("Handling disconnect for player {} on room {}", publicId, code);
+		return playerService.resolveRoom(publicId)
+			.flatMap(room -> {
+				if (code.equals(room.code())) {
+					return roomService.markDisconnected(publicId).doOnSuccess(ignored -> log.debug("Player {} marked disconnected in room {}", publicId, code));
+				} else {
+					log.debug("Disconnect is for spectator session; no status change for player {} on room {}", publicId, code);
+					return Mono.empty();
+				}
+			})
+			.then();
 	}
 
 	private WebSocketMessage serialise(WebSocketSession session, RoomEvent event) {
@@ -130,7 +146,7 @@ public class RoomWebSocketHandler implements WebSocketHandler {
 			return Map.of();
 		}
 
-		final Map<String, String> result = new Object2ObjectOpenHashMap<>();
+		final Map<String, String> result = new HashMap<>();
 		for (String pair : query.split("&")) {
 			int eq = pair.indexOf('=');
 			if (eq > 0) {

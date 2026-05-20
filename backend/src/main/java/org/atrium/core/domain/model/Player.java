@@ -1,5 +1,6 @@
 package org.atrium.core.domain.model;
 
+import org.atrium.core.domain.service.PlayerService;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
@@ -16,7 +17,7 @@ import java.util.UUID;
  * <p>{@link #roomCode} is the player's <em>active index</em> into the room they're
  * currently in — convenience only. The {@link Room#players()} list is the source of
  * truth; if these two disagree, the
- * {@link org.atrium.core.domain.service.PlayerService#resolveRoom(java.util.UUID)} repair
+ * {@link PlayerService#resolveRoom(UUID)} repair
  * scan corrects the index.
  *
  * @param publicId     identity shared with other clients

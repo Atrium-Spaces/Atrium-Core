@@ -40,8 +40,8 @@ any) the player is currently in.
 
 ```json
 {
-  "publicId":      "…",
-  "secretId":      "…",
+  "publicId":      "...",
+  "secretId":      "...",
   "name":          "Alice",
   "avatar":        "mdi:cat",
   "freshIdentity": false,
@@ -60,19 +60,19 @@ player is in a room, the new profile is broadcast as a `playerUpdated` event.
 **Request**
 
 ```json
-{ "publicId": "…", "secretId": "…", "name": "Bob", "avatar": "mdi:dog" }
+{ "publicId": "...", "secretId": "...", "name": "Bob", "avatar": "mdi:dog" }
 ```
 
 **Response 200** — no body.
 
 ### GET `/api/atrium/rooms?limit=50`
 
-List public rooms (most-recently-active first).
+List public rooms (most-recently-active first). The `limit` parameter is clamped to `[1, 200]`.
 
 **Response 200**
 
 ```json
-{ "rooms": [ { /* RoomView */ }, … ] }
+{ "rooms": [ { /* RoomView */ }, ... ] }
 ```
 
 ### GET `/api/atrium/rooms/{code}`
@@ -88,17 +88,23 @@ Create a new room. The caller is automatically the host.
 
 ```json
 {
-  "publicId":     "…",
-  "secretId":     "…",
+  "publicId":     "...",
+  "secretId":     "...",
+  "minPlayers":   2,
   "maxPlayers":   8,
   "gameSettings": { "type": "default" },
   "isPrivate":    false
 }
 ```
 
-`maxPlayers` and `gameSettings` are optional (defaults from `AtriumProperties`).
+`minPlayers`, `maxPlayers`, and `gameSettings` are all optional (defaults from `AtriumProperties` and/or `GameSettings` absolute bounds). The server validates that the values fall within the game's absolute bounds; requests outside the allowed range receive a `400 Bad Request`.
 
 **Response 201** — `RoomView`.
+
+**Errors**
+
+- `400` minPlayers or maxPlayers outside the absolute bounds defined by the game settings.
+- `409` player is already in another room, or room code collision during creation.
 
 ### POST `/api/atrium/rooms/{code}/join`
 
@@ -107,7 +113,7 @@ Join an existing room.
 **Request**
 
 ```json
-{ "publicId": "…", "secretId": "…" }
+{ "publicId": "...", "secretId": "..." }
 ```
 
 **Response 200** — `RoomView`.
@@ -125,7 +131,7 @@ Leave a room voluntarily.
 **Request**
 
 ```json
-{ "publicId": "…", "secretId": "…" }
+{ "publicId": "...", "secretId": "..." }
 ```
 
 **Response 200** — no body. If the leaver was the host, the longest-joined
@@ -139,7 +145,7 @@ Host-only.
 **Request**
 
 ```json
-{ "publicId": "host-…", "secretId": "host-…", "targetPublicId": "victim-…" }
+{ "publicId": "host-...", "secretId": "host-...", "targetPublicId": "victim-..." }
 ```
 
 **Response 200** — no body.
@@ -152,7 +158,7 @@ clears their `roomCode` indexes).
 **Request body** *(yes, DELETE-with-body — secrets stay out of access logs)*
 
 ```json
-{ "publicId": "host-…", "secretId": "host-…" }
+{ "publicId": "host-...", "secretId": "host-..." }
 ```
 
 ### PATCH `/api/atrium/rooms/{code}/settings`
@@ -163,10 +169,11 @@ Host-only. Only allowed in `LOBBY` state. Any field left out is unchanged.
 
 ```json
 {
-  "publicId":     "host-…",
-  "secretId":     "host-…",
+  "publicId":     "host-...",
+  "secretId":     "host-...",
+  "minPlayers":   2,
   "maxPlayers":   12,
-  "gameSettings": { "type": "myGame", "…": "…" },
+  "gameSettings": { "type": "myGame", "...": "..." },
   "isPrivate":    true
 }
 ```
@@ -184,22 +191,20 @@ Host-only. Transitions `IN_GAME → LOBBY`, keeping the player roster intact.
 
 ## WebSocket
 
-Mount: **`/api/atrium/ws/{code}?publicId=…&secretId=…`**
+Mount: **`/api/atrium/ws/{code}?publicId=...&secretId=...`**
 
 Mass-broadcast channel for room events. Connect after `POST /api/atrium/status`
 when entering a room page. The handler:
 
 1. Authenticates the `(publicId, secretId)` pair.
-2. Cancels any pending disconnect grace timer for this player.
-3. Marks the player `ACTIVE` (broadcasts `playerReconnected` if they had been
+2. Marks the player `ACTIVE` (broadcasts `playerReconnected` if they had been
    `DISCONNECTED`).
-4. Sends one `snapshot` frame containing the full `RoomView`.
-5. Forwards every subsequent `RoomEvent` from `atrium:events:{code}` as a JSON
+3. Sends one `snapshot` frame containing the full `RoomView`.
+4. Forwards every subsequent `RoomEvent` from `atrium:events:{code}` as a JSON
    text frame.
 
-On disconnect: marks the player `DISCONNECTED`, broadcasts `playerDisconnected`,
-and schedules `performLeave` to run after the grace period. A reconnect inside
-the window cancels the leave.
+On disconnect: members are marked `DISCONNECTED` and `playerDisconnected` is
+broadcast. No delayed auto-leave is scheduled.
 
 You **don't have to be a member** of the room to subscribe — non-members
 receive the same fan-out (spectator mode). The frontend uses this for the
@@ -214,15 +219,23 @@ All events are JSON objects with a `type` discriminator and a common
 |----------------------|----------------------------------|-----------------------------------------------------------|
 | `snapshot`           | `room: RoomView`                 | First frame after subscribing.                            |
 | `playerJoined`       | `player: PlayerView`             | A new player joined.                                      |
-| `playerLeft`         | `publicId`, `reason?: string`    | Voluntary leave or disconnect grace expired.              |
+| `playerLeft`         | `publicId`, `reason?: string`    | Voluntary leave, explicit kick/delete flow side effects.  |
 | `playerKicked`       | `publicId`                       | Host kicked a member.                                     |
 | `playerUpdated`      | `player: PlayerView`             | Name/avatar change inside the room.                       |
-| `playerDisconnected` | `publicId`                       | WebSocket dropped; grace timer started.                   |
-| `playerReconnected`  | `publicId`                       | WebSocket re-established inside grace.                    |
+| `playerDisconnected` | `publicId`                       | Room member's WebSocket dropped.                          |
+| `playerReconnected`  | `publicId`                       | Previously disconnected member reconnected.               |
 | `hostChanged`        | `newHost`                        | Host left and the longest-joined was promoted.            |
 | `settingsChanged`    | `room: RoomView`                 | Host changed `maxPlayers` / `gameSettings` / `isPrivate`. |
 | `stateChanged`       | `newState: "LOBBY" \| "IN_GAME"` | Host started or stopped the game.                         |
 | `roomDeleted`        | *(none)*                         | Host deleted, or room emptied, or TTL'd out.              |
+
+**Member vs. spectator**: If the WebSocket client is a current member of the room,
+their status is set to `ACTIVE` on connect and `DISCONNECTED` on close. Spectators
+(clients whose `publicId` is not in the room's player list) receive the same event
+stream but do not affect connection status.
+
+No delayed auto-leave is scheduled after disconnect — players remain in the room
+until an explicit leave/kick/delete action or the inactivity cleanup removes them.
 
 ### Reference DTOs
 
@@ -239,8 +252,9 @@ interface RoomView {
   code:           string;    // 6-char [A-Z0-9]
   host:           string;    // PlayerView.publicId
   players:        PlayerView[];
+  minPlayers:     number;
   maxPlayers:     number;
-  gameSettings:   { type: string; /* …game-specific fields… */ };
+  gameSettings:   { type: string; /* ...game-specific fields... */ };
   isPrivate:      boolean;
   state:          "LOBBY" | "IN_GAME";
   createdAt:      string;

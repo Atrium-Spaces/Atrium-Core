@@ -1,6 +1,7 @@
 package org.atrium.core.domain.model;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Polymorphic base type for game-specific room settings.
@@ -27,4 +28,20 @@ public abstract class GameSettings {
 	 * used by the home page when listing public rooms.
 	 */
 	public abstract String gameKind();
+
+	/**
+	 * Optional game-specific lower bound for room size. When {@code null}, Atrium uses
+	 * {@code atrium.core.absolute-min-players}.
+	 */
+	public @Nullable Integer absoluteMinPlayersOverride() {
+		return null;
+	}
+
+	/**
+	 * Optional game-specific upper bound for room size. When {@code null}, Atrium uses
+	 * {@code atrium.core.absolute-max-players}.
+	 */
+	public @Nullable Integer absoluteMaxPlayersOverride() {
+		return null;
+	}
 }
