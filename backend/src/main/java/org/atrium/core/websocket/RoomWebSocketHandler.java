@@ -95,10 +95,10 @@ public final class RoomWebSocketHandler implements WebSocketHandler {
 				log.debug("WebSocket stream started for player {} on room {}", publicId, code);
 				final Mono<WebSocketMessage> snapshot = roomService.view(code)
 					.map(roomView -> new RoomEvent.Snapshot(code, Instant.now(), roomView))
-					.map(event -> serialise(session, event));
+					.map(event -> serialize(session, event));
 
 				final Flux<WebSocketMessage> live = broadcastService.subscribe(code)
-					.map(event -> serialise(session, event));
+					.map(event -> serialize(session, event));
 
 				final Flux<WebSocketMessage> outbound = Flux.concat(snapshot.flux(), live);
 
@@ -126,7 +126,7 @@ public final class RoomWebSocketHandler implements WebSocketHandler {
 			.then();
 	}
 
-	private WebSocketMessage serialise(WebSocketSession session, RoomEvent event) {
+	private WebSocketMessage serialize(WebSocketSession session, RoomEvent event) {
 		try {
 			return session.textMessage(objectMapper.writeValueAsString(event));
 		} catch (JsonProcessingException e) {
@@ -148,9 +148,9 @@ public final class RoomWebSocketHandler implements WebSocketHandler {
 
 		final Map<String, String> result = new HashMap<>();
 		for (String pair : query.split("&")) {
-			int eq = pair.indexOf('=');
-			if (eq > 0) {
-				result.put(URLDecoder.decode(pair.substring(0, eq), StandardCharsets.UTF_8), URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8));
+			int separatorIndex = pair.indexOf('=');
+			if (separatorIndex > 0) {
+				result.put(URLDecoder.decode(pair.substring(0, separatorIndex), StandardCharsets.UTF_8), URLDecoder.decode(pair.substring(separatorIndex + 1), StandardCharsets.UTF_8));
 			}
 		}
 

@@ -2,8 +2,10 @@ package org.atrium.core.redis.stream;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.atrium.core.domain.constant.AtriumConstants;
 import org.atrium.core.domain.event.RoomEvent;
+
 import org.springframework.data.redis.connection.ReactiveSubscription;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
@@ -18,7 +20,7 @@ import java.util.List;
  * Bridges {@link RoomEvent}s onto Redis pub/sub channels (one channel per room).
  *
  * <p>Outbound: {@link #publish(RoomEvent)} {@code PUBLISH}es the event to
- * {@code lobby:events:{roomCode}}. Inbound: {@link #subscribe(String)} returns a
+ * {@code atrium:events:{roomCode}}. Inbound: {@link #subscribe(String)} returns a
  * cold {@link Flux} of every event for the given room — the WebSocket handler
  * subscribes once per connection and forwards into the client session.
  */

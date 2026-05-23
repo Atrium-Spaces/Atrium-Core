@@ -1,0 +1,23 @@
+<div *transloco="let t" class="column gap">
+	<app-header title=""/>
+
+	<div class="column gap center main">
+		<h1>{{ t('title.welcome') }}</h1>
+
+		<p-button (onClick)="dialogVisible.set(true)" text>
+			<div class="profile">
+				<app-profile [showName]="true"/>
+			</div>
+		</p-button>
+
+		<form class="row center gap-small" (ngSubmit)="joinRoom($event, roomCode.value)">
+			<p-float-label variant="in">
+				<input #roomCode pInputText id="roomCode" (input)="updateRoomCode(roomCode)" autocomplete="off" spellcheck="false" [maxLength]="roomCodeLength"/>
+				<label for="roomCode">{{ t('input.roomCode') }}</label>
+			</p-float-label>
+			<p-button icon="pi pi-arrow-right" type="submit" rounded text [disabled]="!roomCode.value || roomCode.value.length < roomCodeLength" [pTooltip]="t('input.joinRoom')" tooltipPosition="bottom"/>
+		</form>
+	</div>
+</div>
+
+<app-edit-profile [(dialogVisible)]="dialogVisible"/>

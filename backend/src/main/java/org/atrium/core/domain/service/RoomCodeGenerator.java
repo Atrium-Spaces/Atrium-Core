@@ -1,6 +1,7 @@
 package org.atrium.core.domain.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.atrium.core.api.error.AtriumException;
 import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.domain.constant.AtriumConstants;
@@ -14,6 +15,7 @@ import java.security.SecureRandom;
  * Generates room codes from {@link AtriumConstants#ROOM_CODE_ALPHABET}, retrying on
  * collision up to {@link AtriumConstants#ROOM_CODE_GENERATION_MAX_ATTEMPTS} times.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public final class RoomCodeGenerator {

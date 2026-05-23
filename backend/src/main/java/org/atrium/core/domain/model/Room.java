@@ -1,5 +1,7 @@
 package org.atrium.core.domain.model;
 
+import org.jspecify.annotations.Nullable;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -10,6 +12,7 @@ import java.util.UUID;
  * of all rooms if it drifts.
  *
  * @param code           6-character upper-case alphanumeric room code (unique)
+ * @param name           optional display name for room lists; {@code null} means unnamed
  * @param host           public id of the host player
  * @param players        ordered list of player public ids; index 0 is the longest-joined
  *                       player. {@link #host} is always present in this list.
@@ -21,26 +24,26 @@ import java.util.UUID;
  * @param createdAt      wall-clock creation time
  * @param lastActivityAt last time anything in this room changed; drives the room TTL
  */
-public record Room(String code, UUID host, List<UUID> players, int minPlayers, int maxPlayers, GameSettings gameSettings, boolean isPrivate, RoomState state, Instant createdAt, Instant lastActivityAt) {
+public record Room(String code, @Nullable String name, UUID host, List<UUID> players, int minPlayers, int maxPlayers, GameSettings gameSettings, boolean isPrivate, RoomState state, Instant createdAt, Instant lastActivityAt) {
 
 	public Room withPlayers(List<UUID> newPlayers) {
-		return new Room(code, host, List.copyOf(newPlayers), minPlayers, maxPlayers, gameSettings, isPrivate, state, createdAt, Instant.now());
+		return new Room(code, name, host, List.copyOf(newPlayers), minPlayers, maxPlayers, gameSettings, isPrivate, state, createdAt, Instant.now());
 	}
 
 	public Room withHost(UUID newHost) {
-		return new Room(code, newHost, players, minPlayers, maxPlayers, gameSettings, isPrivate, state, createdAt, Instant.now());
+		return new Room(code, name, newHost, players, minPlayers, maxPlayers, gameSettings, isPrivate, state, createdAt, Instant.now());
 	}
 
 	public Room withState(RoomState newState) {
-		return new Room(code, host, players, minPlayers, maxPlayers, gameSettings, isPrivate, newState, createdAt, Instant.now());
+		return new Room(code, name, host, players, minPlayers, maxPlayers, gameSettings, isPrivate, newState, createdAt, Instant.now());
 	}
 
-	public Room withSettings(int newMinPlayers, int newMaxPlayers, GameSettings newSettings, boolean newIsPrivate) {
-		return new Room(code, host, players, newMinPlayers, newMaxPlayers, newSettings, newIsPrivate, state, createdAt, Instant.now());
+	public Room withSettings(@Nullable String newName, int newMinPlayers, int newMaxPlayers, GameSettings newSettings, boolean newIsPrivate) {
+		return new Room(code, newName, host, players, newMinPlayers, newMaxPlayers, newSettings, newIsPrivate, state, createdAt, Instant.now());
 	}
 
 	public Room touched() {
-		return new Room(code, host, players, minPlayers, maxPlayers, gameSettings, isPrivate, state, createdAt, Instant.now());
+		return new Room(code, name, host, players, minPlayers, maxPlayers, gameSettings, isPrivate, state, createdAt, Instant.now());
 	}
 
 	public boolean contains(UUID publicId) {

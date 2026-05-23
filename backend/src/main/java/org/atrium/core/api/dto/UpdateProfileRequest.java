@@ -8,6 +8,7 @@ import java.util.UUID;
 /**
  * Request body for {@code POST /api/atrium/profile}. May be sent at any time — in or
  * out of a room — and is broadcast to all room peers when the player is inside one.
+ * {@link #avatar} is optional (may be blank).
  */
-public record UpdateProfileRequest(@NotNull UUID publicId, @NotNull UUID secretId, @NotBlank String name, @NotBlank String avatar) {
+public record UpdateProfileRequest(@NotNull UUID publicId, @NotNull UUID secretId, @NotBlank String name, String avatar) {
 }

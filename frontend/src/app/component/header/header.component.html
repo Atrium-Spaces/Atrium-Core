@@ -1,0 +1,8 @@
+<div *transloco="let t" class="row gap center">
+	<h2 class="spacing">{{ title() }}</h2>
+	<div class="row">
+		<p-button [icon]="getThemeIcon()" (onClick)="toggleTheme()" rounded text severity="secondary" [pTooltip]="t(getThemeTranslationKey())" tooltipPosition="left"/>
+		<p-button icon="pi pi-language" (onClick)="menu.toggle($event)" rounded text severity="secondary" [pTooltip]="t('menu.language')" tooltipPosition="left"/>
+		<p-menu #menu [model]="languageMenuItems" [popup]="true"/>
+	</div>
+</div>

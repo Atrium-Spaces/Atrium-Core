@@ -5,10 +5,12 @@ import lombok.RequiredArgsConstructor;
 import org.atrium.core.autoconfigure.AtriumAutoConfiguration;
 import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.domain.constant.AtriumConstants;
+import org.atrium.core.domain.event.HomeEvent;
 import org.atrium.core.domain.event.RoomEvent;
 import org.atrium.core.domain.model.GameSettings;
 import org.atrium.core.domain.model.Player;
 import org.atrium.core.domain.model.Room;
+import org.atrium.core.websocket.HomeWebSocketHandler;
 import org.atrium.core.websocket.RoomWebSocketHandler;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -57,6 +59,16 @@ public final class RedisAtriumConfiguration {
 		return buildTemplate(connectionFactory, objectMapper, RoomEvent.class);
 	}
 
+	/**
+	 * Reactive Redis template for {@link HomeEvent} serialisation on the home-screen
+	 * pub/sub channel ({@code atrium:events:home}).
+	 */
+	@Bean
+	@ConditionalOnMissingBean(name = "atriumHomeEventRedisTemplate")
+	public ReactiveRedisTemplate<String, HomeEvent> atriumHomeEventRedisTemplate(ReactiveRedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
+		return buildTemplate(connectionFactory, objectMapper, HomeEvent.class);
+	}
+
 	@Bean
 	@ConditionalOnMissingBean
 	public ReactiveRedisMessageListenerContainer reactiveRedisMessageListenerContainer(ReactiveRedisConnectionFactory connectionFactory) {
@@ -64,15 +76,19 @@ public final class RedisAtriumConfiguration {
 	}
 
 	/**
-	 * Mount the WebSocket handler at {@code {websocketPath}/{code}}.
+	 * Mount WebSocket handlers at {@code {websocketPath}/home} and
+	 * {@code {websocketPath}/{code}}.
 	 *
 	 * <p>Order is bumped above {@code WebFluxConfigurationSupport}'s default {@code 0}
 	 * so the framework's annotation-based handler mapping doesn't grab the path first.
 	 */
 	@Bean
 	@ConditionalOnMissingBean(name = "atriumWebSocketHandlerMapping")
-	public HandlerMapping atriumWebSocketHandlerMapping(RoomWebSocketHandler roomWebSocketHandler, AtriumProperties properties) {
-		final Map<String, WebSocketHandler> handlers = Map.of(properties.getWebsocketPath() + "/{code}", roomWebSocketHandler);
+	public HandlerMapping atriumWebSocketHandlerMapping(RoomWebSocketHandler roomWebSocketHandler, HomeWebSocketHandler homeWebSocketHandler, AtriumProperties properties) {
+		final Map<String, WebSocketHandler> handlers = Map.of(
+			properties.getWebsocketPath() + "/home", homeWebSocketHandler,
+			properties.getWebsocketPath() + "/{code}", roomWebSocketHandler
+		);
 		final SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping(handlers);
 		mapping.setOrder(-1);
 		mapping.setCorsConfigurations(AtriumAutoConfiguration.corsConfigurations(properties));

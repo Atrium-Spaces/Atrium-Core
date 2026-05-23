@@ -46,6 +46,7 @@ public final class AtriumConstants {
 	public static final String ALL_PLAYERS_INDEX = KEY_PREFIX + "players:all";
 
 	public static final String EVENT_CHANNEL_PREFIX = KEY_PREFIX + "events:";
+	public static final String HOME_EVENT_CHANNEL = EVENT_CHANNEL_PREFIX + "home";
 
 	public static final class RoomEventTypes {
 		public static final String PLAYER_JOINED = "playerJoined";
@@ -61,6 +62,20 @@ public final class AtriumConstants {
 		public static final String SNAPSHOT = "snapshot";
 
 		private RoomEventTypes() {
+		}
+	}
+
+	/**
+	 * Type discriminators for {@link org.atrium.core.domain.event.HomeEvent} subtypes.
+	 * Matched against the {@code type} property in the JSON serialised form.
+	 */
+	public static final class HomeEventTypes {
+		public static final String SNAPSHOT = "snapshot";
+		public static final String ROOM_CREATED = "roomCreated";
+		public static final String ROOM_UPDATED = "roomUpdated";
+		public static final String ROOM_DELETED = "roomDeleted";
+
+		private HomeEventTypes() {
 		}
 	}
 

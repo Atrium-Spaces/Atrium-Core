@@ -1,6 +1,7 @@
 package org.atrium.core.domain.model;
 
 import org.atrium.core.domain.service.PlayerService;
+
 import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
@@ -40,9 +41,5 @@ public record Player(UUID publicId, UUID secretId, String name, String avatar, @
 
 	public Player withStatus(PlayerStatus newStatus) {
 		return new Player(publicId, secretId, name, avatar, roomCode, newStatus, Instant.now());
-	}
-
-	public Player touched() {
-		return new Player(publicId, secretId, name, avatar, roomCode, status, Instant.now());
 	}
 }

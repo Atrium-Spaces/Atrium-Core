@@ -1,8 +1,22 @@
+@import "primeicons/primeicons.css";
+
+@font-face {
+	font-family: "Noto Color Emoji";
+	font-style: normal;
+	font-display: block;
+	font-weight: 400;
+	src: url("@fontsource/noto-color-emoji/files/noto-color-emoji-emoji-400-normal.woff2") format("woff2"), url("@fontsource/noto-color-emoji/files/noto-color-emoji-emoji-400-normal.woff") format("woff");
+}
+
 * {
-	font-family: sans-serif;
+	font-family: sans-serif, "Noto Color Emoji";
 	margin: 0;
 	padding: 0;
 	user-select: none;
+	--p-avatar-xl-width: 8rem;
+	--p-avatar-xl-icon-size: 4rem;
+	--p-avatar-xl-font-size: 4rem;
+	--p-tabs-tabpanel-padding: 0;
 }
 
 :root {
@@ -17,9 +31,8 @@
 
 html, body {
 	background: var(--background-color);
-	overflow: hidden;
+	overflow-x: hidden;
 	width: 100%;
-	height: 100%;
 }
 
 iconify-icon {

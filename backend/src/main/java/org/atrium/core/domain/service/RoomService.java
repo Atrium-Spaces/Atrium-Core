@@ -2,16 +2,20 @@ package org.atrium.core.domain.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.atrium.core.api.dto.RoomView;
 import org.atrium.core.api.error.AtriumException;
 import org.atrium.core.autoconfigure.AtriumProperties;
 import org.atrium.core.domain.constant.AtriumConstants;
+import org.atrium.core.domain.event.HomeEvent;
 import org.atrium.core.domain.event.RoomEvent;
 import org.atrium.core.domain.model.*;
 import org.atrium.core.extension.listener.GameLifecycleListener;
 import org.atrium.core.redis.repository.PlayerRepository;
 import org.atrium.core.redis.repository.RoomRepository;
+import org.atrium.core.redis.stream.HomeBroadcastService;
 import org.atrium.core.redis.stream.RoomBroadcastService;
+
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -34,6 +38,7 @@ import java.util.UUID;
  *   <li>Authorises the caller (host-only operations check {@code room.host()}).</li>
  *   <li>Persists the updated {@link Room} and any affected {@link Player} records.</li>
  *   <li>Publishes a {@link RoomEvent} on the room's pub/sub channel.</li>
+ *   <li>Publishes a {@link HomeEvent} when public-room listing state changes.</li>
  * </ol>
  */
 @Slf4j
@@ -45,6 +50,7 @@ public final class RoomService {
 	private final PlayerRepository playerRepository;
 	private final PlayerService playerService;
 	private final RoomCodeGenerator codeGenerator;
+	private final HomeBroadcastService homeBroadcastService;
 	private final RoomBroadcastService broadcastService;
 	private final RoomViewAssembler viewAssembler;
 	private final GameLifecycleListener gameLifecycleListener;
@@ -77,20 +83,22 @@ public final class RoomService {
 	 *
 	 * @param publicId            the host's public id
 	 * @param secretId            the host's secret id (authenticated against the player store)
+	 * @param requestedName       optional display name for the room (null/blank = unnamed)
 	 * @param requestedMinPlayers optional requested minimum players; uses default or game-setting bounds
 	 * @param requestedMaxPlayers optional requested maximum players; uses default or game-setting bounds
 	 * @param requestedSettings   optional game settings; falls back to {@link DefaultGameSettings}
 	 * @param isPrivate           when true, the room is hidden from the public listing
 	 * @return the expanded room view of the newly created room
 	 */
-	public Mono<RoomView> createRoom(UUID publicId, UUID secretId, @Nullable Integer requestedMinPlayers, @Nullable Integer requestedMaxPlayers, @Nullable GameSettings requestedSettings, boolean isPrivate) {
-		log.debug("Creating room requested by player={} (min={}, max={}, private={})", publicId, requestedMinPlayers, requestedMaxPlayers, isPrivate);
+	public Mono<RoomView> createRoom(UUID publicId, UUID secretId, @Nullable String requestedName, @Nullable Integer requestedMinPlayers, @Nullable Integer requestedMaxPlayers, @Nullable GameSettings requestedSettings, boolean isPrivate) {
+		log.debug("Creating room requested by player={} (name={}, min={}, max={}, private={})", publicId, requestedName, requestedMinPlayers, requestedMaxPlayers, isPrivate);
 		return playerService.authenticate(publicId, secretId)
 			.flatMap(player -> {
 				if (player.roomCode() != null) {
 					return Mono.error(AtriumException.conflict("Player is already in room " + player.roomCode()));
 				}
 
+				final String name = cleanRoomName(requestedName);
 				final GameSettings settings = requestedSettings != null ? requestedSettings : new DefaultGameSettings();
 				final int minPlayers = resolveMinPlayers(requestedMinPlayers, settings);
 				final int maxPlayers = resolveMaxPlayers(requestedMaxPlayers, settings);
@@ -101,12 +109,13 @@ public final class RoomService {
 
 				return codeGenerator.next().flatMap(code -> {
 					final Instant now = Instant.now();
-					final Room room = new Room(code, publicId, List.of(publicId), minPlayers, maxPlayers, settings, isPrivate, RoomState.LOBBY, now, now);
+					final Room room = new Room(code, name, publicId, List.of(publicId), minPlayers, maxPlayers, settings, isPrivate, RoomState.LOBBY, now, now);
 					return roomRepository.saveNew(room)
 						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room code collision during create; please retry")))
 						.then(playerRepository.save(player.withRoomCode(code)))
 						.then(notifyLifecycle(gameLifecycleListener.onRoomCreated(room), AtriumConstants.LifecycleHookNames.ROOM_CREATED, code))
-						.then(viewAssembler.assemble(room));
+						.then(viewAssembler.assemble(room))
+						.flatMap(roomView -> publishHomeRoomCreated(roomView).thenReturn(roomView));
 				});
 			})
 			.doOnSuccess(roomView -> log.debug("Room created: code={} host={} players={} state={}", roomView.code(), publicId, roomView.players().size(), roomView.state()));
@@ -154,7 +163,9 @@ public final class RoomService {
 						.then(playerRepository.save(updatedPlayer))
 						.then(notifyLifecycle(gameLifecycleListener.onPlayerJoined(updatedRoom, publicId), AtriumConstants.LifecycleHookNames.PLAYER_JOINED, code))
 						.then(viewAssembler.assemble(updatedRoom))
-						.flatMap(roomView -> broadcastService.publish(new RoomEvent.PlayerJoined(code, Instant.now(), viewAssembler.toPlayerView(updatedPlayer, Instant.now()))).thenReturn(roomView));
+						.flatMap(roomView -> broadcastService.publish(new RoomEvent.PlayerJoined(code, Instant.now(), viewAssembler.toPlayerView(updatedPlayer, Instant.now())))
+							.then(publishHomeRoomUpdated(roomView))
+							.thenReturn(roomView));
 				}))
 			.doOnSuccess(roomView -> log.debug("Player {} joined room {} (members={})", publicId, code, roomView.players().size()));
 	}
@@ -173,10 +184,6 @@ public final class RoomService {
 		return playerService.authenticate(publicId, secretId).flatMap(ignored -> performLeave(code, publicId, AtriumConstants.LeaveReasons.LEFT));
 	}
 
-	/**
-	 * Internal leave path used by both the explicit endpoint and the disconnect timer.
-	 * Skips secret-id authentication because the caller is the lobby itself.
-	 */
 	/**
 	 * Internal leave path used by both the explicit endpoint and the cleanup sweep.
 	 * Skips secret-id authentication because the caller is the lobby itself.
@@ -228,6 +235,7 @@ public final class RoomService {
 					.then(notifyPlayerLeft)
 					.then(publishLeave)
 					.then(publishHostChanged)
+					.then(publishHomeRoomUpdated(updatedRoom))
 					.doOnSuccess(ignored -> log.debug("Player {} left room {} (remainingMembers={})", publicId, code, remaining.size()));
 			});
 	}
@@ -275,6 +283,7 @@ public final class RoomService {
 						.then(clearPlayerRoomIfMatching(targetPublicId, code))
 						.then(notifyLifecycle(gameLifecycleListener.onPlayerLeft(room, targetPublicId, AtriumConstants.LeaveReasons.KICKED), AtriumConstants.LifecycleHookNames.PLAYER_LEFT + "(" + AtriumConstants.LeaveReasons.KICKED + ")", code))
 						.then(broadcastService.publish(new RoomEvent.PlayerKicked(code, Instant.now(), targetPublicId)))
+						.then(publishHomeRoomUpdated(updatedRoom))
 						.then();
 				}))
 			.doOnSuccess(ignored -> log.debug("Player {} was kicked from room {} by host {}", targetPublicId, code, publicId));
@@ -314,6 +323,7 @@ public final class RoomService {
 			.then(roomRepository.delete(room.code()))
 			.then(notifyLifecycle(gameLifecycleListener.onRoomDeleted(room), AtriumConstants.LifecycleHookNames.ROOM_DELETED, room.code()))
 			.then(broadcastService.publish(new RoomEvent.RoomDeleted(room.code(), Instant.now())))
+			.then(publishHomeRoomDeleted(room))
 			.then();
 	}
 
@@ -368,7 +378,9 @@ public final class RoomService {
 						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry state transition")))
 						.then(next == RoomState.IN_GAME ? notifyLifecycle(gameLifecycleListener.onGameStarted(updatedRoom), AtriumConstants.LifecycleHookNames.GAME_STARTED, code) : notifyLifecycle(gameLifecycleListener.onGameStopped(updatedRoom), AtriumConstants.LifecycleHookNames.GAME_STOPPED, code))
 						.then(viewAssembler.assemble(updatedRoom))
-						.flatMap(roomView -> broadcastService.publish(new RoomEvent.StateChanged(code, Instant.now(), next)).thenReturn(roomView));
+						.flatMap(roomView -> broadcastService.publish(new RoomEvent.StateChanged(code, Instant.now(), next))
+							.then(publishHomeRoomUpdated(roomView))
+							.thenReturn(roomView));
 				}))
 			.doOnSuccess(roomView -> log.debug("Room {} state transition complete: {} -> {} by host {}", code, expected, next, publicId));
 	}
@@ -380,14 +392,15 @@ public final class RoomService {
 	 * @param code         the room code
 	 * @param publicId     the host's public id
 	 * @param secretId     the host's secret id
+	 * @param name         optional room display name (null keeps current value)
 	 * @param minPlayers   optional new minimum player count
 	 * @param maxPlayers   optional new maximum player count
 	 * @param gameSettings optional new game settings
 	 * @param isPrivate    optional new private flag
 	 * @return the updated room view
 	 */
-	public Mono<RoomView> updateSettings(String code, UUID publicId, UUID secretId, @Nullable Integer minPlayers, @Nullable Integer maxPlayers, @Nullable GameSettings gameSettings, @Nullable Boolean isPrivate) {
-		log.debug("Update settings requested: room={} host={} min={} max={} private={}", code, publicId, minPlayers, maxPlayers, isPrivate);
+	public Mono<RoomView> updateSettings(String code, UUID publicId, UUID secretId, @Nullable String name, @Nullable Integer minPlayers, @Nullable Integer maxPlayers, @Nullable GameSettings gameSettings, @Nullable Boolean isPrivate) {
+		log.debug("Update settings requested: room={} host={} name={} min={} max={} private={}", code, publicId, name, minPlayers, maxPlayers, isPrivate);
 		return playerService.authenticate(publicId, secretId)
 			.flatMap(ignored -> roomRepository.findVersionedByCode(code)
 				.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
@@ -402,6 +415,7 @@ public final class RoomService {
 					}
 
 					final GameSettings newSettings = gameSettings != null ? gameSettings : room.gameSettings();
+					final String newName = name != null ? cleanRoomName(name) : room.name();
 					final int requestedOrCurrentMinPlayers = minPlayers != null ? minPlayers : room.minPlayers();
 					final int requestedOrCurrentMaxPlayers = maxPlayers != null ? maxPlayers : room.maxPlayers();
 					final int newMinPlayers = resolveMinPlayers(requestedOrCurrentMinPlayers, newSettings);
@@ -416,11 +430,13 @@ public final class RoomService {
 					}
 
 					final boolean newPrivate = isPrivate != null ? isPrivate : room.isPrivate();
-					final Room updatedRoom = room.withSettings(newMinPlayers, newMaxPlayers, newSettings, newPrivate);
+					final Room updatedRoom = room.withSettings(newName, newMinPlayers, newMaxPlayers, newSettings, newPrivate);
 					return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
 						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry settings update")))
 						.then(viewAssembler.assemble(updatedRoom))
-						.flatMap(roomView -> broadcastService.publish(new RoomEvent.SettingsChanged(code, Instant.now(), roomView)).thenReturn(roomView));
+						.flatMap(roomView -> broadcastService.publish(new RoomEvent.SettingsChanged(code, Instant.now(), roomView))
+							.then(publishHomeSettingsChanged(room, roomView))
+							.thenReturn(roomView));
 				}))
 			.doOnSuccess(roomView -> log.debug("Room {} settings updated by host {}", code, publicId));
 	}
@@ -435,13 +451,18 @@ public final class RoomService {
 			return Mono.empty();
 		} else {
 			log.debug("Broadcasting profile update for player {} in room {}", player.publicId(), roomCode);
-			return broadcastService.publish(new RoomEvent.PlayerUpdated(roomCode, Instant.now(), viewAssembler.toPlayerView(player, Instant.now()))).then();
+			return broadcastService.publish(new RoomEvent.PlayerUpdated(roomCode, Instant.now(), viewAssembler.toPlayerView(player, Instant.now())))
+				.then(roomRepository.findByCode(roomCode)
+					.flatMap(this::publishHomeRoomUpdated)
+					.then())
+				.then();
 		}
 	}
 
 	/**
 	 * Mark a player as {@link PlayerStatus#DISCONNECTED} and broadcast
 	 * {@link RoomEvent.PlayerDisconnected} if they are in a room.
+	 * No-op when they are already disconnected.
 	 *
 	 * @param publicId the player's public id
 	 * @return an empty mono on completion
@@ -449,6 +470,10 @@ public final class RoomService {
 	public Mono<Void> markDisconnected(UUID publicId) {
 		return playerRepository.findById(publicId)
 			.flatMap(player -> {
+				if (player.status() == PlayerStatus.DISCONNECTED) {
+					return Mono.empty();
+				}
+
 				final String roomCode = player.roomCode();
 				log.debug("Marking player {} as DISCONNECTED (room={})", publicId, roomCode);
 				final Mono<Void> save = playerRepository.save(player.withStatus(PlayerStatus.DISCONNECTED)).then();
@@ -456,7 +481,11 @@ public final class RoomService {
 				if (roomCode == null) {
 					return save;
 				} else {
-					return save.then(broadcastService.publish(new RoomEvent.PlayerDisconnected(roomCode, Instant.now(), publicId)).then());
+					return save
+						.then(broadcastService.publish(new RoomEvent.PlayerDisconnected(roomCode, Instant.now(), publicId)))
+						.then(roomRepository.findByCode(roomCode)
+							.flatMap(this::publishHomeRoomUpdated)
+							.then());
 				}
 			});
 	}
@@ -464,6 +493,7 @@ public final class RoomService {
 	/**
 	 * Mark a player as {@link PlayerStatus#ACTIVE} and broadcast
 	 * {@link RoomEvent.PlayerReconnected} if they are in a room.
+	 * No-op when they are already active.
 	 *
 	 * @param publicId the player's public id
 	 * @return an empty mono on completion
@@ -471,6 +501,10 @@ public final class RoomService {
 	public Mono<Void> markReconnected(UUID publicId) {
 		return playerRepository.findById(publicId)
 			.flatMap(player -> {
+				if (player.status() == PlayerStatus.ACTIVE) {
+					return Mono.empty();
+				}
+
 				final String roomCode = player.roomCode();
 				log.debug("Marking player {} as ACTIVE (room={})", publicId, roomCode);
 				final Mono<Void> save = playerRepository.save(player.withStatus(PlayerStatus.ACTIVE)).then();
@@ -478,7 +512,11 @@ public final class RoomService {
 				if (roomCode == null) {
 					return save;
 				} else {
-					return save.then(broadcastService.publish(new RoomEvent.PlayerReconnected(roomCode, Instant.now(), publicId)).then());
+					return save
+						.then(broadcastService.publish(new RoomEvent.PlayerReconnected(roomCode, Instant.now(), publicId)))
+						.then(roomRepository.findByCode(roomCode)
+							.flatMap(this::publishHomeRoomUpdated)
+							.then());
 				}
 			});
 	}
@@ -545,6 +583,83 @@ public final class RoomService {
 		final int gameSettingMaximumPlayers = absoluteMaxPlayersOverride != null ? absoluteMaxPlayersOverride : properties.getAbsoluteMaxPlayers();
 		validateAbsoluteBounds(gameSettingMinimumPlayers, gameSettingMaximumPlayers);
 		return gameSettingMaximumPlayers;
+	}
+
+	/**
+	 * Publish a {@link HomeEvent.RoomCreated} for public rooms only.
+	 * Private rooms are silently skipped.
+	 */
+	private Mono<Void> publishHomeRoomCreated(RoomView roomView) {
+		if (roomView.isPrivate()) {
+			return Mono.empty();
+		}
+		return homeBroadcastService.publish(new HomeEvent.RoomCreated(Instant.now(), roomView)).then();
+	}
+
+	/**
+	 * Convenience overload that assembles a view from the room entity first,
+	 * then delegates to {@link #publishHomeRoomUpdated(RoomView)}.
+	 * Private rooms are silently skipped.
+	 */
+	private Mono<Void> publishHomeRoomUpdated(Room room) {
+		if (room.isPrivate()) {
+			return Mono.empty();
+		}
+		return viewAssembler.assemble(room)
+			.flatMap(this::publishHomeRoomUpdated);
+	}
+
+	/**
+	 * Publish a {@link HomeEvent.RoomUpdated} for public rooms only.
+	 * Private rooms are silently skipped.
+	 */
+	private Mono<Void> publishHomeRoomUpdated(RoomView roomView) {
+		if (roomView.isPrivate()) {
+			return Mono.empty();
+		}
+		return homeBroadcastService.publish(new HomeEvent.RoomUpdated(Instant.now(), roomView)).then();
+	}
+
+	/**
+	 * Publish a {@link HomeEvent.RoomDeleted} for public rooms only.
+	 * Private rooms are silently skipped.
+	 */
+	private Mono<Void> publishHomeRoomDeleted(Room room) {
+		if (room.isPrivate()) {
+			return Mono.empty();
+		}
+		return homeBroadcastService.publish(new HomeEvent.RoomDeleted(Instant.now(), room.code())).then();
+	}
+
+	/**
+	 * Publish the appropriate {@link HomeEvent} when room visibility changes.
+	 * Handles the private→public ({@code roomCreated}), public→private
+	 * ({@code roomDeleted}), and public→public ({@code roomUpdated}) transitions.
+	 * No-op when both before and after are private.
+	 */
+	private Mono<Void> publishHomeSettingsChanged(Room previousRoom, RoomView updatedRoomView) {
+		if (previousRoom.isPrivate() && updatedRoomView.isPrivate()) {
+			return Mono.empty();
+		}
+		if (previousRoom.isPrivate()) {
+			return publishHomeRoomCreated(updatedRoomView);
+		}
+		if (updatedRoomView.isPrivate()) {
+			return homeBroadcastService.publish(new HomeEvent.RoomDeleted(Instant.now(), previousRoom.code())).then();
+		}
+		return publishHomeRoomUpdated(updatedRoomView);
+	}
+
+	private @Nullable String cleanRoomName(@Nullable String roomName) {
+		if (roomName == null) {
+			return null;
+		}
+		final String trimmed = roomName.strip();
+		if (trimmed.isEmpty()) {
+			return null;
+		}
+		final int maxLength = properties.getMaxRoomNameLength();
+		return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
 	}
 
 	private static void validateAbsoluteBounds(int absoluteMinPlayers, int absoluteMaxPlayers) {

@@ -147,7 +147,7 @@ public class RoomRepository {
 	 * Atomically update a room if its version matches the expected value. Uses the
 	 * Lua CAS script to prevent lost concurrent updates.
 	 *
-	 * @param room           the room with updated fields
+	 * @param room            the room with updated fields
 	 * @param expectedVersion the version that must match in Redis for the write to proceed
 	 * @return true if the update was applied, false if the version didn't match
 	 */

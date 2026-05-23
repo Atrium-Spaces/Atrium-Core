@@ -1,16 +1,21 @@
-import {CommonModule} from "@angular/common";
-import {Component} from "@angular/core";
+import {ChangeDetectionStrategy, Component, inject} from "@angular/core";
 import {RouterOutlet} from "@angular/router";
+
+import {RequestService} from "./service/request.service";
 
 @Component({
 	selector: "app-root",
-	standalone: true,
+	changeDetection: ChangeDetectionStrategy.OnPush,
 	imports: [
-		CommonModule,
 		RouterOutlet,
 	],
 	templateUrl: "./app.component.html",
 	styleUrl: "./app.component.scss",
 })
 export class AppComponent {
+	private readonly requestService = inject(RequestService);
+
+	constructor() {
+		this.requestService.init();
+	}
 }

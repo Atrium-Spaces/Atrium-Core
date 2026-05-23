@@ -1,7 +1,8 @@
 # HTTP & WebSocket API
 
-> Generated from `org.atrium.core.api.controller.AtriumController` and
-> `org.atrium.core.websocket.RoomWebSocketHandler`. When the code changes, update
+> Generated from `org.atrium.core.api.controller.AtriumController`,
+> `org.atrium.core.websocket.RoomWebSocketHandler`, and
+> `org.atrium.core.websocket.HomeWebSocketHandler`. When the code changes, update
 > this document in the same PR.
 
 Base path: **`/api/atrium`**. All write endpoints expect a JSON body containing the
@@ -11,10 +12,10 @@ Errors are returned as
 
 ```json
 {
-  "timestamp": "2026-05-18T12:34:56.789Z",
-  "status": 404,
-  "error": "Not Found",
-  "message": "Room not found: ABCDEF"
+	"timestamp": "2026-05-18T12:34:56.789Z",
+	"status": 404,
+	"error": "Not Found",
+	"message": "Room not found: ABCDEF"
 }
 ```
 
@@ -22,35 +23,34 @@ Errors are returned as
 
 ### POST `/api/atrium/status`
 
-Identity bootstrap. Returns existing or freshly minted identity, and the room (if
-any) the player is currently in.
+Identity bootstrap. Uses the caller's `AuthenticatedRequest` shape — the
+server returns the existing identity or mints a fresh one and returns
+`StatusResponse`. The client must persist the returned `publicId` and
+`secretId` as cookies.
 
-**Request**
-
-```json
-{
-  "publicId":  "uuid-or-null",
-  "secretId":  "uuid-or-null",
-  "name":      "Alice (optional)",
-  "avatar":    "mdi:cat (optional)"
-}
-```
-
-**Response 200**
+**Request** — `AuthenticatedRequest`
 
 ```json
 {
-  "publicId":      "...",
-  "secretId":      "...",
-  "name":          "Alice",
-  "avatar":        "mdi:cat",
-  "freshIdentity": false,
-  "activeRoom":    {/* RoomView, or null */}
+	"publicId": "uuid-or-null",
+	"secretId": "uuid-or-null"
 }
 ```
 
-When `freshIdentity` is `true`, the client **must** persist `publicId` and
-`secretId` to cookies — these are the new identity.
+**Response 200** — `StatusResponse`
+
+```json
+{
+	"publicId": "...",
+	"secretId": "...",
+	"name": "Alice",
+	"avatar": "mdi:cat",
+	"freshIdentity": false,
+	"activeRoom": {
+		/* RoomView, or null */
+	}
+}
+```
 
 ### POST `/api/atrium/profile`
 
@@ -60,7 +60,12 @@ player is in a room, the new profile is broadcast as a `playerUpdated` event.
 **Request**
 
 ```json
-{ "publicId": "...", "secretId": "...", "name": "Bob", "avatar": "mdi:dog" }
+{
+	"publicId": "...",
+	"secretId": "...",
+	"name": "Bob",
+	"avatar": "mdi:dog"
+}
 ```
 
 **Response 200** — no body.
@@ -72,7 +77,12 @@ List public rooms (most-recently-active first). The `limit` parameter is clamped
 **Response 200**
 
 ```json
-{ "rooms": [ { /* RoomView */ }, ... ] }
+[
+	{
+		/* RoomView */
+	},
+	...
+]
 ```
 
 ### GET `/api/atrium/rooms/{code}`
@@ -84,20 +94,30 @@ frontend should redirect to the home page).
 
 Create a new room. The caller is automatically the host.
 
-**Request**
+**Request** — `CreateRoomRequest`
 
 ```json
 {
-  "publicId":     "...",
-  "secretId":     "...",
-  "minPlayers":   2,
-  "maxPlayers":   8,
-  "gameSettings": { "type": "default" },
-  "isPrivate":    false
+	"publicId": "...",
+	"secretId": "...",
+	"name": "My Room",
+	// optional display name
+	"minPlayers": 2,
+	// optional
+	"maxPlayers": 8,
+	// optional
+	"gameSettings": {
+		"type": "default"
+	},
+	// optional
+	"isPrivate": false
 }
 ```
 
-`minPlayers`, `maxPlayers`, and `gameSettings` are all optional (defaults from `AtriumProperties` and/or `GameSettings` absolute bounds). The server validates that the values fall within the game's absolute bounds; requests outside the allowed range receive a `400 Bad Request`.
+`name`, `minPlayers`, `maxPlayers`, and `gameSettings` are all
+optional (defaults from `AtriumProperties` and/or `GameSettings` absolute
+bounds). The server validates that the values fall within the game's absolute bounds;
+requests outside the allowed range receive a `400 Bad Request`.
 
 **Response 201** — `RoomView`.
 
@@ -110,10 +130,13 @@ Create a new room. The caller is automatically the host.
 
 Join an existing room.
 
-**Request**
+**Request** — `AuthenticatedRequest`
 
 ```json
-{ "publicId": "...", "secretId": "..." }
+{
+	"publicId": "...",
+	"secretId": "..."
+}
 ```
 
 **Response 200** — `RoomView`.
@@ -128,10 +151,13 @@ Join an existing room.
 
 Leave a room voluntarily.
 
-**Request**
+**Request** — `AuthenticatedRequest`
 
 ```json
-{ "publicId": "...", "secretId": "..." }
+{
+	"publicId": "...",
+	"secretId": "..."
+}
 ```
 
 **Response 200** — no body. If the leaver was the host, the longest-joined
@@ -142,10 +168,14 @@ it's deleted (`roomDeleted` event).
 
 Host-only.
 
-**Request**
+**Request** — `KickPlayerRequest`
 
 ```json
-{ "publicId": "host-...", "secretId": "host-...", "targetPublicId": "victim-..." }
+{
+	"publicId": "host-...",
+	"secretId": "host-...",
+	"targetPublicId": "victim-..."
+}
 ```
 
 **Response 200** — no body.
@@ -155,10 +185,13 @@ Host-only.
 Host-only. Deletes the room outright (broadcasts `roomDeleted` to every member,
 clears their `roomCode` indexes).
 
-**Request body** *(yes, DELETE-with-body — secrets stay out of access logs)*
+**Request body** (yes, DELETE-with-body — secrets stay out of access logs) — `AuthenticatedRequest`
 
 ```json
-{ "publicId": "host-...", "secretId": "host-..." }
+{
+	"publicId": "host-...",
+	"secretId": "host-..."
+}
 ```
 
 ### PATCH `/api/atrium/rooms/{code}/settings`
@@ -169,12 +202,15 @@ Host-only. Only allowed in `LOBBY` state. Any field left out is unchanged.
 
 ```json
 {
-  "publicId":     "host-...",
-  "secretId":     "host-...",
-  "minPlayers":   2,
-  "maxPlayers":   12,
-  "gameSettings": { "type": "myGame", "...": "..." },
-  "isPrivate":    true
+	"publicId": "host-...",
+	"secretId": "host-...",
+	"minPlayers": 2,
+	"maxPlayers": 12,
+	"gameSettings": {
+		"type": "myGame",
+		"...": "..."
+	},
+	"isPrivate": true
 }
 ```
 
@@ -182,14 +218,58 @@ Host-only. Only allowed in `LOBBY` state. Any field left out is unchanged.
 
 ### POST `/api/atrium/rooms/{code}/start`
 
-Host-only. Transitions `LOBBY → IN_GAME`. A `stateChanged` event is broadcast —
+Host-only. Transitions `LOBBY → IN_GAME`. Validates that the current member count
+meets at least `minPlayers`. A `stateChanged` event is broadcast —
 game-specific code listens for this to spin up the actual game state.
+
+**Request** — `AuthenticatedRequest`
+
+```json
+{
+	"publicId": "host-...",
+	"secretId": "host-..."
+}
+```
 
 ### POST `/api/atrium/rooms/{code}/stop`
 
 Host-only. Transitions `IN_GAME → LOBBY`, keeping the player roster intact.
 
+**Request** — `AuthenticatedRequest`
+
+```json
+{
+	"publicId": "host-...",
+	"secretId": "host-..."
+}
+```
+
 ## WebSocket
+
+### Home stream
+
+Mount: **`/api/atrium/ws/home?limit=50`**
+
+Public stream for home-screen room listings. No auth query params required.
+
+On connect, the server sends one `snapshot` frame containing up to `limit` public
+rooms (`limit` is clamped to `[1, 200]`, default `50`), then forwards every
+subsequent `HomeEvent` from `atrium:events:home`.
+
+| `type`        | Extra fields        | When emitted                                        |
+|---------------|---------------------|-----------------------------------------------------|
+| `snapshot`    | `rooms: RoomView[]` | First frame after subscribing.                      |
+| `roomCreated` | `room: RoomView`    | A new public room is created (or private → public). |
+| `roomUpdated` | `room: RoomView`    | Public room metadata/member/status/state changed.   |
+| `roomDeleted` | `roomCode`          | Public room deleted (or public → private).          |
+
+See [`HomeWebSocketHandler`](../backend/src/main/java/org/atrium/core/websocket/HomeWebSocketHandler.java) and
+[`HomeEvent`](../backend/src/main/java/org/atrium/core/domain/event/HomeEvent.java) for the implementation.
+
+Clients should apply deltas optimistically and still do occasional REST
+reconciliation (`GET /api/atrium/rooms`) after reconnects.
+
+### Room stream
 
 Mount: **`/api/atrium/ws/{code}?publicId=...&secretId=...`**
 
@@ -241,23 +321,24 @@ until an explicit leave/kick/delete action or the inactivity cleanup removes the
 
 ```ts
 interface PlayerView {
-  publicId: string;
-  name:     string;
-  avatar:   string;
-  status:   "ACTIVE" | "DISCONNECTED";
-  joinedAt: string;          // ISO-8601
+	publicId: string;
+	name: string;
+	avatar: string;
+	status: "ACTIVE" | "DISCONNECTED";
+	joinedAt: string;          // ISO-8601
 }
 
 interface RoomView {
-  code:           string;    // 6-char [A-Z0-9]
-  host:           string;    // PlayerView.publicId
-  players:        PlayerView[];
-  minPlayers:     number;
-  maxPlayers:     number;
-  gameSettings:   { type: string; /* ...game-specific fields... */ };
-  isPrivate:      boolean;
-  state:          "LOBBY" | "IN_GAME";
-  createdAt:      string;
-  lastActivityAt: string;
+	code: string;    // 6-char [A-Z0-9]
+	name: string | null;   // optional display name
+	host: string;    // PlayerView.publicId
+	players: PlayerView[];
+	minPlayers: number;
+	maxPlayers: number;
+	gameSettings: { type: string; /* ...game-specific fields... */ };
+	isPrivate: boolean;
+	state: "LOBBY" | "IN_GAME";
+	createdAt: string;    // ISO-8601
+	lastActivityAt: string;    // ISO-8601
 }
 ```

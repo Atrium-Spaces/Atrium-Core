@@ -1,0 +1,27 @@
+.input {
+	width: 12rem;
+}
+
+.emojis {
+	flex-wrap: wrap;
+	max-width: 40rem;
+}
+
+.emoji-container {
+	height: 16rem;
+	overflow-y: auto;
+}
+
+.emoji-wrapper {
+	position: relative;
+	width: 2rem;
+	height: 2.5rem;
+}
+
+.emoji {
+	font-size: 2rem;
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+}

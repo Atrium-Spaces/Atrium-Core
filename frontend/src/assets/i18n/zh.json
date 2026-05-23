@@ -1,2 +1,15 @@
 {
+	"title": {
+		"welcome": "歡迎來到 Atrium."
+	},
+	"menu": {
+		"language": "語言",
+		"lightTheme": "淺色主題",
+		"darkTheme": "深色主題"
+	},
+	"input": {
+		"name": "名稱",
+		"roomCode": "房間代碼",
+		"joinRoom": "加入房間"
+	}
 }

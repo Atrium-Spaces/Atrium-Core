@@ -29,7 +29,7 @@ Browse to <http://localhost:4200>.
 
 Everything tunable about the lobby is under `atrium.core.*` in `application.yml`
 or as `--atrium.core....` command-line arguments. See
-[`docs/ARCHITECTURE.md` §7](./ARCHITECTURE.md#7-inactivity-cleanup) for cleanup behaviour.
+[`docs/ARCHITECTURE.md` §8](./ARCHITECTURE.md#8-inactivity-cleanup) for cleanup behaviour.
 
 | Property                   | Default          | Meaning                                                     |
 |----------------------------|------------------|-------------------------------------------------------------|
@@ -40,6 +40,7 @@ or as `--atrium.core....` command-line arguments. See
 | `absolute-max-players`     | `32`             | Hard ceiling regardless of host request.                    |
 | `max-name-length`          | `32`             | Player display-name cap.                                    |
 | `max-avatar-length`        | `256`            | Avatar string cap (URL / icon id).                          |
+| `max-room-name-length`     | `64`             | Hard cap on room display name, in characters.               |
 | `cleanup-inactive-seconds` | `259200`         | Inactivity threshold (seconds) for stale room/player sweep. |
 | `websocket-path`           | `/api/atrium/ws` | WebSocket mount point.                                      |
 | `cors-allowed-origins`     | `["*"]`          | CORS whitelist for the lobby endpoints.                     |
@@ -92,5 +93,5 @@ spring:
 ```
 
 Provide your own `GameSettings` subtype and a Jackson `Module` bean that registers
-it — see [`docs/ARCHITECTURE.md` §8](./ARCHITECTURE.md#8-extension-points-for-downstream-projects).
+it — see [`docs/ARCHITECTURE.md` §9](./ARCHITECTURE.md#9-extension-points-for-downstream-projects).
 

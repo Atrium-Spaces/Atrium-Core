@@ -30,9 +30,9 @@ field names must spell out their meaning in full.
 
 | Context           | Allowed                                 | Example                                       |
 |-------------------|-----------------------------------------|-----------------------------------------------|
-| Caught exceptions | `e`, `ex`                               | `} catch (Exception e) { ... }`                 |
+| Caught exceptions | `e`, `ex`                               | `} catch (Exception e) { ... }`               |
 | Transloco let     | `t`                                     | `*transloco="let t"`                          |
-| Loop indices      | `i`, `j`, `k`                           | `for (int i = 0; i < length; i++) { ... }`      |
+| Loop indices      | `i`, `j`, `k`                           | `for (int i = 0; i < length; i++) { ... }`    |
 | Common idioms     | `id`, `lat`, `lon`, `min`, `max`, `dto` | These are de-facto whole words in our domain. |
 | Library type echo | match the imported class                | `FileRef fileRef = new FileRef();`            |
 
@@ -188,7 +188,7 @@ Anything under `backend/src/main/java/org/atrium/core/` is part of the reusable
 
 - not depend on game-specific code (no `import com.somegame.*`);
 - expose extension points through Spring beans + Jackson `@JsonTypeInfo` polymorphism
-  (see {@link org.atrium.core.domain.model.GameSettings}) rather than hard-coded enums;
+  (see `org.atrium.core.domain.model.GameSettings`) rather than hard-coded enums;
 - self-wire via `AtriumAutoConfiguration` so a downstream project gets every bean by
   declaring the Gradle dependency alone.
 
@@ -331,7 +331,7 @@ when adding a new endpoint, event, or state mutation:
    the WebSocket handler subscribes to the channel and forwards. Direct
    session.send(...) bypasses the multi-instance fan-out.
 4. **Events are polymorphic and self-describing.** Every event variant under
-   {@link org.atrium.core.domain.event.RoomEvent} carries `roomCode` + `emittedAt` plus its
+   `org.atrium.core.domain.event.RoomEvent` carries `roomCode` + `emittedAt` plus its
    own payload. No sequence numbers, no implicit ordering — clients dedupe by
    `(type, roomCode, emittedAt, payloadKey)` if they care.
 5. **Authenticate every write.** Public id alone is not enough — every write endpoint
@@ -342,9 +342,9 @@ when adding a new endpoint, event, or state mutation:
    only to keep the socket alive — game-specific messages should mount their own
    handler at a different path.
 7. **Disconnect is a soft presence event.** A dropped WebSocket flips the player to
-   {@code DISCONNECTED}; reconnect flips them back to {@code ACTIVE}. Membership
+   `DISCONNECTED`; reconnect flips them back to `ACTIVE`. Membership
    changes happen via explicit leave/kick/delete paths or scheduled inactivity cleanup
-   (driven by {@code atrium.core.cleanup-inactive-seconds}).
+   (driven by `atrium.core.cleanup-inactive-seconds`).
 
 ## 4. Known design limitations
 
@@ -353,14 +353,14 @@ address:
 
 - **`PlayerView.joinedAt` uses room creation time.** The domain model does not
   track per-player join timestamps. The `joinedAt` field is populated with
-  `Room.createdAt()` for all members. See `docs/LOBBY.md §7`.
+  `Room.createdAt()` for all members. See [`docs/LOBBY.md §7`](./LOBBY.md#7-playerview-joinedat-limitation).
 - **No connection-grace auto-leave.** A dropped WebSocket marks the player
   `DISCONNECTED`, but no delayed timer removes them from the room. Only explicit
   leave/kick/delete paths or the inactivity sweep can remove disconnected players.
-- **Zero test coverage.** Tests are planned but not yet implemented. See §5
+- **Zero test coverage.** Tests are planned but not yet implemented. See [§6](#6-testing)
   below for the testing strategy.
 
-## 5. Testing
+## 6. Testing
 
 - **Backend**: JUnit 5 (`@Test` from `org.junit.jupiter.api`). One test class per production
   class, named `<Class>Test`, located at the mirror path under `backend/src/test/java/`.
@@ -373,16 +373,16 @@ address:
 - Aim for tests on:
 	- All branches of pure utility functions (`RoomCodeGenerator`, name / avatar
 	  sanitisation, ...).
-	- Every state-mutating method on {@link org.atrium.core.domain.service.RoomService}
+	- Every state-mutating method on `org.atrium.core.domain.service.RoomService`
 	  (create / join / leave / kick / delete / start / stop / settings update).
 	- Each REST endpoint's happy path + at least one failure path.
-	- The {@link org.atrium.core.domain.service.PlayerService#resolveRoom} repair scan when
+	- The `org.atrium.core.domain.service.PlayerService#resolveRoom` repair scan when
 	  the cached index disagrees with the room's roster.
 
-## 5. Documentation
+## 7. Documentation
 
-- Every behavioural change updates the relevant doc — `README.md` (intro, structure),
-  `docs/ARCHITECTURE.md`, `docs/API.md`, `docs/LOBBY.md`.
+- Every behavioural change updates the relevant doc — [`README.md`](../README.md) (intro, structure),
+  [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md), [`docs/API.md`](./API.md), [`docs/LOBBY.md`](./LOBBY.md).
 - Public Java types use Javadoc; public TS types use JSDoc / TSDoc.
-- The auto-generated REST contract lives in `docs/API.md`; keep it in sync with the
+- The auto-generated REST contract lives in [`docs/API.md`](./API.md); keep it in sync with the
   shape of `AtriumController` and the DTOs under `org.atrium.core.api.dto`.

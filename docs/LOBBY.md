@@ -8,12 +8,12 @@
 
 The website stores four cookies:
 
-| Cookie     | Purpose                                                 |
-|------------|---------------------------------------------------------|
-| `publicId` | UUID shown to other players in room rosters / events.   |
-| `secretId` | UUID proving "this is me" to the server. Never exposed. |
-| `name`     | Display name (cached locally to render before status).  |
-| `avatar`   | Avatar string (URL / Iconify id / emoji).               |
+| Cookie      | Purpose                                                 |
+|-------------|---------------------------------------------------------|
+| `public_id` | UUID shown to other players in room rosters / events.   |
+| `secret_id` | UUID proving "this is me" to the server. Never exposed. |
+| `name`      | Display name (cached locally to render before status).  |
+| `avatar`    | Avatar string (URL / Iconify id / emoji).               |
 
 On every page load the client `POST /api/atrium/status` with whatever it has. The
 server either confirms the `(publicId, secretId)` pair and returns the existing
@@ -35,9 +35,9 @@ Two tabs:
   /rooms/{code}/join`). A "Create room" button calls `POST /rooms`.
 - **Browse** — `GET /rooms` for the public-room list. Each row shows current
   player count, game kind (`gameSettings.gameKind`), state. Buttons:
-  - `LOBBY` rooms: "Join" (if you're not already in a room).
-  - `IN_GAME` rooms: "Spectate" (open the room page; subscribe to WebSocket
-    fan-out without calling `/join`).
+	- `LOBBY` rooms: "Join" (if you're not already in a room).
+	- `IN_GAME` rooms: "Spectate" (open the room page; subscribe to WebSocket
+	  fan-out without calling `/join`).
 
 ## 3. Room page (`/room/{code}`)
 
@@ -95,24 +95,29 @@ No scheduled auto-leave runs after disconnect in MVP.
 projects subclass it:
 
 ```java
+
 @JsonTypeName("chess")
 public final class ChessSettings extends GameSettings {
-    private final int initialClockSeconds;
-    private final int incrementSeconds;
+	private final int initialClockSeconds;
+	private final int incrementSeconds;
 
 	@JsonCreator
-    public ChessSettings(@JsonProperty("initialClockSeconds") int initialClockSeconds, @JsonProperty("incrementSeconds")   int incrementSeconds) {
-        this.initialClockSeconds = initialClockSeconds;
-        this.incrementSeconds = incrementSeconds;
-    }
+	public ChessSettings(@JsonProperty("initialClockSeconds") int initialClockSeconds, @JsonProperty("incrementSeconds") int incrementSeconds) {
+		this.initialClockSeconds = initialClockSeconds;
+		this.incrementSeconds = incrementSeconds;
+	}
 
-    @Override public String gameKind() { return "chess"; }
-    // getters ...
+	@Override
+	public String gameKind() {
+		return "chess";
+	}
+
+	// getters ...
 }
 ```
 
 ...and register the subtype with a Jackson `Module` bean (see
-[`ARCHITECTURE.md` §8](./ARCHITECTURE.md#8-extension-points-for-downstream-projects)).
+[`ARCHITECTURE.md` §9](./ARCHITECTURE.md#9-extension-points-for-downstream-projects)).
 
 The frontend round-trips the JSON opaquely — it doesn't need to know any concrete
 type at the wire level.

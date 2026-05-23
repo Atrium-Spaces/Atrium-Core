@@ -2,6 +2,7 @@ package org.atrium.core.autoconfigure;
 
 import lombok.Getter;
 import lombok.Setter;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.List;
@@ -50,6 +51,11 @@ public final class AtriumProperties {
 	 * Hard cap on player {@code avatar} string length, in characters.
 	 */
 	private int maxAvatarLength = 256;
+
+	/**
+	 * Hard cap on room {@code name} length, in characters. Blank names are treated as unset.
+	 */
+	private int maxRoomNameLength = 64;
 
 	/**
 	 * Generic inactivity threshold (in seconds) used by scheduled cleanup jobs.

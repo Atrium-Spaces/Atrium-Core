@@ -10,6 +10,7 @@ import org.atrium.core.domain.service.RoomViewAssembler;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -31,9 +32,9 @@ public final class AtriumController {
 	private final RoomViewAssembler roomViewAssembler;
 
 	@PostMapping("/status")
-	public Mono<StatusResponse> status(@RequestBody StatusRequest request) {
+	public Mono<StatusResponse> status(@RequestBody AuthenticatedRequest request) {
 		log.debug("Status check requested for publicId={}", request.publicId());
-		return playerService.ensureIdentity(request.publicId(), request.secretId(), request.name(), request.avatar())
+		return playerService.ensureIdentity(request.publicId(), request.secretId())
 			.flatMap(result -> playerService.resolveRoom(result.player().publicId())
 				.flatMap(roomViewAssembler::assemble)
 				.map(roomView -> buildStatus(result, roomView))
@@ -48,11 +49,9 @@ public final class AtriumController {
 	}
 
 	@GetMapping("/rooms")
-	public Mono<RoomListResponse> listPublicRooms(@RequestParam(defaultValue = "50") int limit) {
+	public Flux<RoomView> listPublicRooms(@RequestParam(defaultValue = "50") int limit) {
 		log.debug("Public room list requested with limit={}", limit);
-		return roomService.listPublic(Math.clamp(limit, 1, 200))
-			.collectList()
-			.map(RoomListResponse::new);
+		return roomService.listPublic(Math.clamp(limit, 1, 200));
 	}
 
 	@GetMapping("/rooms/{code}")
@@ -64,12 +63,12 @@ public final class AtriumController {
 	@PostMapping("/rooms")
 	public Mono<ResponseEntity<RoomView>> createRoom(@Valid @RequestBody CreateRoomRequest request) {
 		log.debug("Create room requested by player {}", request.publicId());
-		return roomService.createRoom(request.publicId(), request.secretId(), request.minPlayers(), request.maxPlayers(), request.gameSettings(), request.isPrivate())
+		return roomService.createRoom(request.publicId(), request.secretId(), request.name(), request.minPlayers(), request.maxPlayers(), request.gameSettings(), request.isPrivate())
 			.map(roomView -> ResponseEntity.status(201).body(roomView));
 	}
 
 	@PostMapping("/rooms/{code}/join")
-	public Mono<RoomView> joinRoom(@PathVariable String code, @Valid @RequestBody JoinRoomRequest request) {
+	public Mono<RoomView> joinRoom(@PathVariable String code, @Valid @RequestBody AuthenticatedRequest request) {
 		log.debug("Join room requested: player={} room={}", request.publicId(), code);
 		return roomService.joinRoom(code, request.publicId(), request.secretId());
 	}
@@ -95,7 +94,7 @@ public final class AtriumController {
 	@PatchMapping("/rooms/{code}/settings")
 	public Mono<RoomView> updateSettings(@PathVariable String code, @Valid @RequestBody UpdateRoomSettingsRequest request) {
 		log.debug("Update settings requested by host {} for room {}", request.publicId(), code);
-		return roomService.updateSettings(code, request.publicId(), request.secretId(), request.minPlayers(), request.maxPlayers(), request.gameSettings(), request.isPrivate());
+		return roomService.updateSettings(code, request.publicId(), request.secretId(), request.name(), request.minPlayers(), request.maxPlayers(), request.gameSettings(), request.isPrivate());
 	}
 
 	@PostMapping("/rooms/{code}/start")

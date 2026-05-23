@@ -1,2 +1,15 @@
 {
+	"title": {
+		"welcome": "Welcome to Atrium."
+	},
+	"menu": {
+		"language": "Language",
+		"lightTheme": "Light Theme",
+		"darkTheme": "Dark Theme"
+	},
+	"input": {
+		"name": "Name",
+		"roomCode": "Room Code",
+		"joinRoom": "Join Room"
+	}
 }
