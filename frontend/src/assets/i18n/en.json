@@ -10,6 +10,7 @@
 	"input": {
 		"name": "Name",
 		"roomCode": "Room Code",
-		"joinRoom": "Join Room"
+		"joinRoom": "Join Room",
+		"createRoom": "Create New Room"
 	}
 }

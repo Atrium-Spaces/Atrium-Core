@@ -5,7 +5,7 @@ import {ButtonModule} from "primeng/button";
 import {TooltipModule} from "primeng/tooltip";
 
 import {AuthenticationService} from "../../service/authentication.service";
-import {emojiForLabel} from "../../utility/emoji";
+import {emojiForHexCode} from "../../utility/emoji";
 
 @Component({
 	selector: "app-profile",
@@ -27,7 +27,7 @@ export class ProfileComponent {
 	constructor() {
 		effect(() => {
 			const avatar = this.authenticationService.avatar();
-			this.emoji.set(avatar ? emojiForLabel[avatar]?.unicode : undefined);
+			this.emoji.set(avatar ? emojiForHexCode[avatar]?.unicode : undefined);
 		});
 	}
 

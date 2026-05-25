@@ -1,6 +1,6 @@
 {
 	"title": {
-		"welcome": "歡迎來到 Atrium."
+		"welcome": "歡迎來到 Atrium。"
 	},
 	"menu": {
 		"language": "語言",
@@ -10,6 +10,7 @@
 	"input": {
 		"name": "名稱",
 		"roomCode": "房間代碼",
-		"joinRoom": "加入房間"
+		"joinRoom": "加入房間",
+		"createRoom": "創建房間"
 	}
 }

@@ -13,27 +13,19 @@ export class RequestService {
 	private readonly authenticationService = inject(AuthenticationService);
 
 	init() {
-		this.httpClient.post<StatusResponse>(`${baseUrl}/status`, {
+		return this.httpClient.post<StatusResponse>(`${baseUrl}/status`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
-		}).subscribe({
-			next: ({publicId, secretId, name, avatar}) => {
-				this.authenticationService.publicId.set(publicId);
-				this.authenticationService.secretId.set(secretId);
-				this.authenticationService.name.set(name);
-				this.authenticationService.avatar.set(avatar);
-			},
-			error: error => console.error("Status check failed", error),
 		});
 	}
 
 	updateProfile() {
-		this.httpClient.post<void>(`${baseUrl}/profile`, {
+		return this.httpClient.post<void>(`${baseUrl}/profile`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
 			name: this.authenticationService.name(),
 			avatar: this.authenticationService.avatar(),
-		}).subscribe();
+		});
 	}
 
 	createRoom(minPlayers: number, maxPlayers: number, isPrivate: boolean) {
@@ -109,7 +101,7 @@ export class RequestService {
 		});
 	}
 
-	subscribeToHome(): WebSocket {
+	subscribeToHome() {
 		return new WebSocket(`${RequestService.getWebsocketBaseUrl()}/home`);
 	}
 

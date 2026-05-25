@@ -10,13 +10,17 @@
 			</div>
 		</p-button>
 
-		<form class="row center gap-small" (ngSubmit)="joinRoom($event, roomCode.value)">
-			<p-float-label variant="in">
-				<input #roomCode pInputText id="roomCode" (input)="updateRoomCode(roomCode)" autocomplete="off" spellcheck="false" [maxLength]="roomCodeLength"/>
-				<label for="roomCode">{{ t('input.roomCode') }}</label>
-			</p-float-label>
-			<p-button icon="pi pi-arrow-right" type="submit" rounded text [disabled]="!roomCode.value || roomCode.value.length < roomCodeLength" [pTooltip]="t('input.joinRoom')" tooltipPosition="bottom"/>
-		</form>
+		<div class="column input">
+			<form class="row center gap-small input" (ngSubmit)="joinRoom($event, roomCode.value)">
+				<p-float-label class="input" variant="in">
+					<input #roomCode pInputText id="roomCode" (input)="updateRoomCode(roomCode)" [disabled]="loading()" autocomplete="off" spellcheck="false" [maxLength]="roomCodeLength" fluid/>
+					<label for="roomCode">{{ t('input.roomCode') }}</label>
+				</p-float-label>
+				<p-button icon="pi pi-arrow-right" type="submit" rounded text [disabled]="loading() || !roomCode.value || roomCode.value.length < roomCodeLength" [pTooltip]="t('input.joinRoom')" tooltipPosition="bottom"/>
+			</form>
+			<p-divider/>
+			<p-button class="input" icon="pi pi-plus" rounded text [label]="t('input.createRoom')" (onClick)="createRoom()" [disabled]="loading()" fluid/>
+		</div>
 	</div>
 </div>
 

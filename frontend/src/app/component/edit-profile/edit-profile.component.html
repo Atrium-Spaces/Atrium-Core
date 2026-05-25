@@ -1,34 +1,37 @@
-<p-dialog *transloco="let t" modal [(visible)]="dialogVisible" dismissableMask [style]="{ maxWidth: '80%', maxHeight: '80%' }">
-	<div class="column gap center">
+<p-dialog *transloco="let t" modal [(visible)]="dialogVisible" dismissableMask [style]="{ maxWidth: '80%', maxHeight: '80%', width: '33rem' }">
+	<div #wrapper class="column gap center">
 		<app-profile/>
-		<p-float-label variant="in">
-			<input pInputText id="name" class="input" [(ngModel)]="nameInput" autocomplete="off" spellcheck="false"/>
-			<label for="name">{{ t('input.name') }}</label>
-		</p-float-label>
 
-		<p-iconfield>
-			<p-inputicon class="pi pi-search"/>
-			<input pInputText id="search" class="input" type="search" [(ngModel)]="searchInput" autocomplete="off" spellcheck="false"/>
-		</p-iconfield>
+		<div class="column gap-small center">
+			<p-float-label variant="in" class="input">
+				<input pInputText id="name" [(ngModel)]="nameInput" autocomplete="off" spellcheck="false" fluid/>
+				<label for="name">{{ t('input.name') }}</label>
+			</p-float-label>
 
-		<p-virtualscroller [items]="emojis()" [itemSize]="emojiButtonSize" scrollHeight="12rem" [style]="{ width: (emojiButtonSize * rowCount + scrollBarWidth) + 'px', height: '12rem' }">
-			<ng-template #item let-item>
-				<div class="row">
-					@if (item.length === 0) {
-						<div class="row center" [style]="{ width: '100%', height: emojiButtonSize + 'px' }">
-							<p-divider/>
-						</div>
-					} @else {
-						@for (compactEmoji of item; track $index) {
-							<p-button (onClick)="selectEmoji(compactEmoji)" rounded [text]="!selectedEmoji(compactEmoji)">
-								<div class="emoji-wrapper">
-									<div class="emoji">{{ compactEmoji.unicode }}</div>
-								</div>
-							</p-button>
+			<p-iconfield class="input">
+				<p-inputicon class="pi pi-search"/>
+				<input pInputText id="search" type="search" [(ngModel)]="searchInput" autocomplete="off" spellcheck="false" fluid/>
+			</p-iconfield>
+
+			<p-virtualscroller [items]="emojis()" [itemSize]="emojiButtonSize" scrollHeight="12rem" [style]="{ width: (emojiButtonSize * rowCount() + scrollBarWidth) + 'px', height: '12rem' }">
+				<ng-template #item let-item>
+					<div class="row">
+						@if (item.length === 0) {
+							<div class="row center" [style]="{ width: '100%', height: emojiButtonSize + 'px' }">
+								<p-divider/>
+							</div>
+						} @else {
+							@for (compactEmoji of item; track $index) {
+								<p-button (onClick)="selectEmoji(compactEmoji)" rounded [text]="!selectedEmoji(compactEmoji)">
+									<div class="emoji-wrapper">
+										<div class="emoji">{{ compactEmoji.unicode }}</div>
+									</div>
+								</p-button>
+							}
 						}
-					}
-				</div>
-			</ng-template>
-		</p-virtualscroller>
+					</div>
+				</ng-template>
+			</p-virtualscroller>
+		</div>
 	</div>
 </p-dialog>
