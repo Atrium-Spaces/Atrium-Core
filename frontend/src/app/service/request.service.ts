@@ -122,7 +122,7 @@ interface StatusResponse {
 	name: string;
 	avatar: string;
 	freshIdentity: boolean;
-	activeRoom?: RoomDTO;
+	activeRooms: RoomDTO[];
 }
 
 interface PlayerDTO {

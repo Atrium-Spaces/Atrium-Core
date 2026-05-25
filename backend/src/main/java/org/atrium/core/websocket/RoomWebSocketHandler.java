@@ -79,7 +79,7 @@ public final class RoomWebSocketHandler implements WebSocketHandler {
 				return session.close().then(Mono.empty());
 			})
 			.flatMap(player -> {
-				final boolean isRoomMember = code.equals(player.roomCode());
+				final boolean isRoomMember = player.roomCodes().contains(code);
 				log.debug("WebSocket authenticated for player {} on room {} (member={})", publicId, code, isRoomMember);
 				if (!isRoomMember) {
 					log.debug("Player {} not a member of room {} — spectator subscription", publicId, code);
@@ -114,9 +114,11 @@ public final class RoomWebSocketHandler implements WebSocketHandler {
 
 	private Mono<Void> onDisconnect(UUID publicId, String code) {
 		log.debug("Handling disconnect for player {} on room {}", publicId, code);
-		return playerService.resolveRoom(publicId)
-			.flatMap(room -> {
-				if (code.equals(room.code())) {
+		return playerService.resolvePlayerRooms(publicId)
+			.filter(room -> room.code().equals(code))
+			.hasElements()
+			.flatMap(isMember -> {
+				if (isMember) {
 					return roomService.markDisconnected(publicId).doOnSuccess(ignored -> log.debug("Player {} marked disconnected in room {}", publicId, code));
 				} else {
 					log.debug("Disconnect is for spectator session; no status change for player {} on room {}", publicId, code);

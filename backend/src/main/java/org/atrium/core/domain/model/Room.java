@@ -8,7 +8,7 @@ import java.util.UUID;
 
 /**
  * An Atrium room. The room entity is the single source of truth for membership — the
- * {@link Player#roomCode()} field is a derived index that can be rebuilt from a scan
+ * {@link Player#roomCodes()} field is a derived index that can be rebuilt from a scan
  * of all rooms if it drifts.
  *
  * @param code           6-character upper-case alphanumeric room code (unique)

@@ -91,7 +91,7 @@ record Player(
 	UUID secretId,                // never exposed to other clients
 	String name,
 	String avatar,
-	@Nullable String roomCode,    // active index — repairable
+	List<String> roomCodes,       // active indexes — repairable; empty = roomless
 	PlayerStatus status,          // ACTIVE | DISCONNECTED
 	Instant lastActiveAt
 ) {
@@ -103,15 +103,15 @@ Stored at `atrium:player:{publicId}`. Indexed in `atrium:players:all` scored by
 
 ### 4.3 The active-index repair scan
 
-`Player.roomCode` is **derived state** — a convenience pointer. The
+`Player.roomCodes` is **derived state** — a convenience pointer. The
 `Room.players` list is the source of truth. If a lookup detects that
 
-- the room at `Player.roomCode` doesn't exist, **or**
-- the room exists but doesn't contain this player,
+- any room code in `Player.roomCodes` doesn't exist, **or**
+- a room exists but doesn't contain this player,
 
-then `PlayerService.resolveRoom(...)` performs an emergency scan of every room in the
-`all` index. If exactly one room contains the player, the index is rewritten to match;
-otherwise the index is cleared.
+then `PlayerService.resolvePlayerRooms(...)` performs an emergency scan of every room in the
+`all` index and rewrites the player's room-codes list to match the set of rooms that
+actually contain them.
 
 ## 5. Request lifecycle
 

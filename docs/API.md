@@ -46,9 +46,9 @@ server returns the existing identity or mints a fresh one and returns
 	"name": "Alice",
 	"avatar": "mdi:cat",
 	"freshIdentity": false,
-	"activeRoom": {
-		/* RoomView, or null */
-	}
+	"activeRooms": [
+		/* RoomView, ... */
+	]
 }
 ```
 
@@ -124,7 +124,7 @@ requests outside the allowed range receive a `400 Bad Request`.
 **Errors**
 
 - `400` minPlayers or maxPlayers outside the absolute bounds defined by the game settings.
-- `409` player is already in another room, or room code collision during creation.
+- `409` room code collision during creation.
 
 ### POST `/api/atrium/rooms/{code}/join`
 
@@ -145,7 +145,6 @@ Join an existing room.
 
 - `404` room doesn't exist.
 - `403` room is in `IN_GAME` (spectate via WebSocket instead) or is full.
-- `409` player is already in a different room.
 
 ### POST `/api/atrium/rooms/{code}/leave`
 
@@ -183,7 +182,7 @@ Host-only.
 ### DELETE `/api/atrium/rooms/{code}`
 
 Host-only. Deletes the room outright (broadcasts `roomDeleted` to every member,
-clears their `roomCode` indexes).
+removes the room code from their indexes).
 
 **Request body** (yes, DELETE-with-body — secrets stay out of access logs) — `AuthenticatedRequest`
 

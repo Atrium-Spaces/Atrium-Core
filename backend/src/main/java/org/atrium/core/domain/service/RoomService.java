@@ -94,10 +94,6 @@ public final class RoomService {
 		log.debug("Creating room requested by player={} (name={}, min={}, max={}, private={})", publicId, requestedName, requestedMinPlayers, requestedMaxPlayers, isPrivate);
 		return playerService.authenticate(publicId, secretId)
 			.flatMap(player -> {
-				if (player.roomCode() != null) {
-					return Mono.error(AtriumException.conflict("Player is already in room " + player.roomCode()));
-				}
-
 				final String name = cleanRoomName(requestedName);
 				final GameSettings settings = requestedSettings != null ? requestedSettings : new DefaultGameSettings();
 				final int minPlayers = resolveMinPlayers(requestedMinPlayers, settings);
@@ -112,7 +108,7 @@ public final class RoomService {
 					final Room room = new Room(code, name, publicId, List.of(publicId), minPlayers, maxPlayers, settings, isPrivate, RoomState.LOBBY, now, now);
 					return roomRepository.saveNew(room)
 						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room code collision during create; please retry")))
-						.then(playerRepository.save(player.withRoomCode(code)))
+						.then(playerRepository.save(player.withRoomAdded(code)))
 						.then(notifyLifecycle(gameLifecycleListener.onRoomCreated(room), AtriumConstants.LifecycleHookNames.ROOM_CREATED, code))
 						.then(viewAssembler.assemble(room))
 						.flatMap(roomView -> publishHomeRoomCreated(roomView).thenReturn(roomView));
@@ -137,13 +133,10 @@ public final class RoomService {
 				.switchIfEmpty(Mono.error(AtriumException.roomNotFound(code)))
 				.flatMap(versionedRoom -> {
 					final Room room = versionedRoom.room();
-					if (player.roomCode() != null && !player.roomCode().equals(code)) {
-						return Mono.error(AtriumException.conflict("Already in room " + player.roomCode()));
-					}
 
 					if (room.contains(publicId)) {
 						log.debug("Player {} is already in room {}; refreshing player room index", publicId, code);
-						return playerRepository.save(player.withRoomCode(code)).then(viewAssembler.assemble(room));
+						return playerRepository.save(player.withRoomAdded(code)).then(viewAssembler.assemble(room));
 					}
 
 					if (room.state() != RoomState.LOBBY) {
@@ -157,7 +150,7 @@ public final class RoomService {
 					final List<UUID> newPlayers = new ArrayList<>(room.players());
 					newPlayers.add(publicId);
 					final Room updatedRoom = room.withPlayers(newPlayers);
-					final Player updatedPlayer = player.withRoomCode(code);
+					final Player updatedPlayer = player.withRoomAdded(code);
 					return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
 						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry join")))
 						.then(playerRepository.save(updatedPlayer))
@@ -187,7 +180,7 @@ public final class RoomService {
 	/**
 	 * Internal leave path used by both the explicit endpoint and the cleanup sweep.
 	 * Skips secret-id authentication because the caller is the lobby itself.
-	 * If the room no longer exists, the player's cached roomCode is still cleared.
+	 * If the room no longer exists, the player's cached roomCodes list is still updated.
 	 *
 	 * @param code     the room code
 	 * @param publicId the leaving player's public id
@@ -242,13 +235,12 @@ public final class RoomService {
 
 	private Mono<Void> clearPlayerRoomIfMatching(UUID publicId, String roomCode) {
 		return playerRepository.findById(publicId)
-			.flatMap(player -> roomCode.equals(player.roomCode()) ? playerRepository.save(player.withRoomCode(null)).then() : Mono.empty())
-			.then();
+			.flatMap(player -> player.roomCodes().contains(roomCode) ? playerRepository.save(player.withRoomRemoved(roomCode)).then() : Mono.empty());
 	}
 
 	/**
 	 * Kick a player from the room. Only the host can kick, and the host cannot kick
-	 * themselves. The kicked player's cached roomCode is cleared.
+	 * themselves. The kicked player's cached roomCodes list is updated.
 	 *
 	 * @param code           the room code
 	 * @param publicId       the host's public id
@@ -323,8 +315,7 @@ public final class RoomService {
 			.then(roomRepository.delete(room.code()))
 			.then(notifyLifecycle(gameLifecycleListener.onRoomDeleted(room), AtriumConstants.LifecycleHookNames.ROOM_DELETED, room.code()))
 			.then(broadcastService.publish(new RoomEvent.RoomDeleted(room.code(), Instant.now())))
-			.then(publishHomeRoomDeleted(room))
-			.then();
+			.then(publishHomeRoomDeleted(room));
 	}
 
 	/**
@@ -442,26 +433,26 @@ public final class RoomService {
 	}
 
 	/**
-	 * Re-broadcast a player's new profile to their current room (if any). Called by
+	 * Re-broadcast a player's new profile to all their current rooms. Called by
 	 * the controller after {@link PlayerService#updateProfile} succeeds.
 	 */
 	public Mono<Void> broadcastProfileUpdate(Player player) {
-		final String roomCode = player.roomCode();
-		if (roomCode == null) {
+		final List<String> roomCodes = player.roomCodes();
+
+		if (roomCodes.isEmpty()) {
 			return Mono.empty();
-		} else {
-			log.debug("Broadcasting profile update for player {} in room {}", player.publicId(), roomCode);
-			return broadcastService.publish(new RoomEvent.PlayerUpdated(roomCode, Instant.now(), viewAssembler.toPlayerView(player, Instant.now())))
-				.then(roomRepository.findByCode(roomCode)
-					.flatMap(this::publishHomeRoomUpdated)
-					.then())
-				.then();
 		}
+
+		log.debug("Broadcasting profile update for player {} in rooms {}", player.publicId(), roomCodes);
+		return Flux.fromIterable(roomCodes)
+			.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerUpdated(roomCode, Instant.now(), viewAssembler.toPlayerView(player, Instant.now())))
+				.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated)))
+			.then();
 	}
 
 	/**
 	 * Mark a player as {@link PlayerStatus#DISCONNECTED} and broadcast
-	 * {@link RoomEvent.PlayerDisconnected} if they are in a room.
+	 * {@link RoomEvent.PlayerDisconnected} to all rooms they are in.
 	 * No-op when they are already disconnected.
 	 *
 	 * @param publicId the player's public id
@@ -474,25 +465,19 @@ public final class RoomService {
 					return Mono.empty();
 				}
 
-				final String roomCode = player.roomCode();
-				log.debug("Marking player {} as DISCONNECTED (room={})", publicId, roomCode);
-				final Mono<Void> save = playerRepository.save(player.withStatus(PlayerStatus.DISCONNECTED)).then();
+				final List<String> roomCodes = player.roomCodes();
+				log.debug("Marking player {} as DISCONNECTED (rooms={})", publicId, roomCodes);
 
-				if (roomCode == null) {
-					return save;
-				} else {
-					return save
-						.then(broadcastService.publish(new RoomEvent.PlayerDisconnected(roomCode, Instant.now(), publicId)))
-						.then(roomRepository.findByCode(roomCode)
-							.flatMap(this::publishHomeRoomUpdated)
-							.then());
-				}
+				return playerRepository.save(player.withStatus(PlayerStatus.DISCONNECTED)).then(Flux.fromIterable(roomCodes)
+					.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerDisconnected(roomCode, Instant.now(), publicId))
+						.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated)))
+					.then());
 			});
 	}
 
 	/**
 	 * Mark a player as {@link PlayerStatus#ACTIVE} and broadcast
-	 * {@link RoomEvent.PlayerReconnected} if they are in a room.
+	 * {@link RoomEvent.PlayerReconnected} to all rooms they are in.
 	 * No-op when they are already active.
 	 *
 	 * @param publicId the player's public id
@@ -505,19 +490,13 @@ public final class RoomService {
 					return Mono.empty();
 				}
 
-				final String roomCode = player.roomCode();
-				log.debug("Marking player {} as ACTIVE (room={})", publicId, roomCode);
-				final Mono<Void> save = playerRepository.save(player.withStatus(PlayerStatus.ACTIVE)).then();
+				final List<String> roomCodes = player.roomCodes();
+				log.debug("Marking player {} as ACTIVE (rooms={})", publicId, roomCodes);
 
-				if (roomCode == null) {
-					return save;
-				} else {
-					return save
-						.then(broadcastService.publish(new RoomEvent.PlayerReconnected(roomCode, Instant.now(), publicId)))
-						.then(roomRepository.findByCode(roomCode)
-							.flatMap(this::publishHomeRoomUpdated)
-							.then());
-				}
+				return playerRepository.save(player.withStatus(PlayerStatus.ACTIVE)).then(Flux.fromIterable(roomCodes)
+					.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerReconnected(roomCode, Instant.now(), publicId))
+						.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated)))
+					.then());
 			});
 	}
 

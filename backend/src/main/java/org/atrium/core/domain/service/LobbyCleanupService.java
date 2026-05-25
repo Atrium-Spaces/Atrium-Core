@@ -70,7 +70,7 @@ public final class LobbyCleanupService {
 	private Mono<Void> cleanupInactiveRoomlessPlayers(Instant inactiveCutoff) {
 		return playerRepository.findStaleIds(inactiveCutoff)
 			.flatMap(playerRepository::findById)
-			.filter(player -> player.roomCode() == null && player.lastActiveAt().isBefore(inactiveCutoff))
+			.filter(player -> player.roomCodes().isEmpty() && player.lastActiveAt().isBefore(inactiveCutoff))
 			.flatMap(player -> {
 				log.info("Cleanup: deleting inactive roomless player {} (last active={})", player.publicId(), player.lastActiveAt());
 				return playerRepository.delete(player.publicId());

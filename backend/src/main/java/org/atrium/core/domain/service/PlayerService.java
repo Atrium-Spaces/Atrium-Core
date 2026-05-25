@@ -13,9 +13,11 @@ import org.atrium.core.redis.repository.RoomRepository;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -26,9 +28,9 @@ import java.util.UUID;
  * (public id appears in room rosters and events) without exposing the credential
  * needed to act as you.
  *
- * <p>{@link #resolveRoom(UUID)} implements the "active index" fail-safe described in
- * the architecture doc: if the cached {@code roomCode} on the player points to a
- * room that no longer exists or no longer contains them, an emergency scan of all
+ * <p>{@link #resolvePlayerRooms(UUID)} implements the "active index" fail-safe described in
+ * the architecture doc: if the cached {@code roomCodes} on the player point to
+ * rooms that no longer exist or no longer contain them, an emergency scan of all
  * active rooms repairs the index.
  */
 @Slf4j
@@ -76,7 +78,7 @@ public class PlayerService {
 		final UUID secretId = UUID.randomUUID();
 		final String name = cleanName("Player " + publicId.toString().replaceAll("\\W", "").substring(0, 6).toUpperCase());
 		final String avatar = cleanAvatar(null);
-		return new IdentityResult(new Player(publicId, secretId, name, avatar, null, PlayerStatus.ACTIVE, Instant.now()), true);
+		return new IdentityResult(new Player(publicId, secretId, name, avatar, List.of(), PlayerStatus.ACTIVE, Instant.now()), true);
 	}
 
 	/**
@@ -117,52 +119,52 @@ public class PlayerService {
 	}
 
 	/**
-	 * Return the room the given player is currently in, repairing the cached index if
-	 * it points to a stale or wrong room.
+	 * Return all rooms the given player is currently in, repairing the cached index if
+	 * it points to stale or wrong rooms.
 	 *
-	 * @return the room when membership is confirmed, or empty {@link Mono} otherwise
+	 * @return a flux of rooms the player is a member of; completes without emitting if none
 	 */
-	public Mono<Room> resolveRoom(UUID publicId) {
-		log.debug("Resolving room for player {}", publicId);
+	public Flux<Room> resolvePlayerRooms(UUID publicId) {
+		log.debug("Resolving rooms for player {}", publicId);
 		return playerRepository.findById(publicId)
-			.flatMap(player -> {
-				final String cachedCode = player.roomCode();
+			.flatMapMany(player -> {
+				final List<String> cachedCodes = player.roomCodes();
 
-				if (cachedCode == null) {
-					return Mono.empty();
-				} else {
-					return roomRepository.findByCode(cachedCode)
-						.flatMap(room -> room.contains(publicId) ? Mono.just(room) : Mono.defer(() -> repairAndResolve(player)))
-						.switchIfEmpty(Mono.defer(() -> repairAndResolve(player)));
+				if (cachedCodes.isEmpty()) {
+					return Flux.empty();
 				}
+
+				return Flux.fromIterable(cachedCodes)
+					.flatMap(code -> roomRepository.findByCode(code).filter(room -> room.contains(publicId)))
+					.collectList()
+					.flatMapMany(validRooms -> {
+						if (validRooms.size() == cachedCodes.size()) {
+							return Flux.fromIterable(validRooms);
+						} else {
+							return repairPlayerRooms(player);
+						}
+					});
 			});
 	}
 
-	private Mono<Room> repairAndResolve(Player player) {
-		log.warn("Repairing room index for player {} (was pointing to {})", player.publicId(), player.roomCode());
+	private Flux<Room> repairPlayerRooms(Player player) {
+		log.warn("Repairing room indices for player {}", player.publicId());
 		return roomRepository.findAll()
 			.filter(room -> room.contains(player.publicId()))
-			.take(2)
 			.collectList()
-			.flatMap(matches -> {
-				if (matches.size() == 1) {
-					final Room found = matches.getFirst();
-					return playerRepository.save(player.withRoomCode(found.code())).thenReturn(found);
-				}
-
-				if (matches.size() > 1) {
-					log.warn("Player {} appears in multiple rooms during index repair; clearing cached roomCode", player.publicId());
-				}
-
-				return playerRepository.save(player.withRoomCode(null)).then(Mono.empty());
+			.flatMapMany(foundRooms -> {
+				final List<String> foundCodes = foundRooms.stream().map(Room::code).toList();
+				return playerRepository.save(player.withRoomCodes(foundCodes)).thenMany(Flux.fromIterable(foundRooms));
 			});
 	}
 
 	private String cleanName(@Nullable String name) {
 		final String trimmed = name == null ? "" : name.strip();
+
 		if (trimmed.isEmpty()) {
 			throw AtriumException.badRequest("Name must not be empty");
 		}
+
 		final int maxLength = properties.getMaxNameLength();
 		return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
 	}

@@ -1,7 +1,6 @@
 package org.atrium.core.api.dto;
 
-import org.jspecify.annotations.Nullable;
-
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -14,7 +13,7 @@ import java.util.UUID;
  * @param name          current display name (server may have normalised it)
  * @param avatar        current avatar
  * @param freshIdentity {@code true} when the server just minted these ids
- * @param activeRoom    compact view of the room the player is currently in, if any
+ * @param activeRooms   compact views of the rooms the player is currently in; empty list means none
  */
-public record StatusResponse(UUID publicId, UUID secretId, String name, String avatar, boolean freshIdentity, @Nullable RoomView activeRoom) {
+public record StatusResponse(UUID publicId, UUID secretId, String name, String avatar, boolean freshIdentity, List<RoomView> activeRooms) {
 }

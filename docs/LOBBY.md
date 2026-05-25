@@ -22,7 +22,7 @@ player record, or — if either id is missing or the pair doesn't match — mint
 cookies with whatever the server returned.
 
 Identity is **decoupled** from the lobby: a brand-new player exists in Redis the
-moment they hit `/status`. They're roomless (`roomCode = null`) until they
+moment they hit `/status`. They're roomless (`roomCodes = []`) until they
 explicitly join one. Roomless players inactive beyond the cleanup threshold are
 pruned by the scheduled sweep.
 
@@ -35,7 +35,7 @@ Two tabs:
   /rooms/{code}/join`). A "Create room" button calls `POST /rooms`.
 - **Browse** — `GET /rooms` for the public-room list. Each row shows current
   player count, game kind (`gameSettings.gameKind`), state. Buttons:
-	- `LOBBY` rooms: "Join" (if you're not already in a room).
+	- `LOBBY` rooms: "Join" (players may be in multiple rooms concurrently).
 	- `IN_GAME` rooms: "Spectate" (open the room page; subscribe to WebSocket
 	  fan-out without calling `/join`).
 
@@ -132,11 +132,11 @@ indicator only.
 
 ## 8. The active-index repair scan
 
-Players carry a `roomCode` field as a fast lookup hint. If it ever disagrees with
+Players carry a `roomCodes` list as a fast lookup hint. If it ever disagrees with
 the canonical room rosters (because Redis was partially restored, or a race in a
-previous bug, or someone tampered with keys), `PlayerService.resolveRoom` scans
-every room in the index and rewrites the player's `roomCode` to match the one
-room that actually contains them — or clears it if none do. Triggered only on
-suspicion (cached room doesn't exist, or exists without this player), so it's
-zero-cost in the common case.
+previous bug, or someone tampered with keys), `PlayerService.resolvePlayerRooms` scans
+every room in the index and rewrites the player's `roomCodes` list to match the set of
+rooms that actually contain them. Triggered only on suspicion (a cached code points to a
+room that doesn't exist, or exists without this player), so it's zero-cost in the common
+case.
 

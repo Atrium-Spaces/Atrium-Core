@@ -7,11 +7,12 @@ import org.atrium.core.api.dto.*;
 import org.atrium.core.domain.service.PlayerService;
 import org.atrium.core.domain.service.RoomService;
 import org.atrium.core.domain.service.RoomViewAssembler;
-import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 /**
  * Reactive REST surface for the lobby system.
@@ -35,10 +36,10 @@ public final class AtriumController {
 	public Mono<StatusResponse> status(@RequestBody AuthenticatedRequest request) {
 		log.debug("Status check requested for publicId={}", request.publicId());
 		return playerService.ensureIdentity(request.publicId(), request.secretId())
-			.flatMap(result -> playerService.resolveRoom(result.player().publicId())
-				.flatMap(roomViewAssembler::assemble)
-				.map(roomView -> buildStatus(result, roomView))
-				.defaultIfEmpty(buildStatus(result, null)));
+			.flatMap(result -> playerService.resolvePlayerRooms(result.player().publicId())
+				.concatMap(roomViewAssembler::assemble)
+				.collectList()
+				.map(roomViews -> buildStatus(result, roomViews)));
 	}
 
 	@PostMapping("/profile")
@@ -109,7 +110,7 @@ public final class AtriumController {
 		return roomService.stopGame(code, request.publicId(), request.secretId());
 	}
 
-	private static StatusResponse buildStatus(PlayerService.IdentityResult result, @Nullable RoomView activeRoom) {
-		return new StatusResponse(result.player().publicId(), result.player().secretId(), result.player().name(), result.player().avatar(), result.freshIdentity(), activeRoom);
+	private static StatusResponse buildStatus(PlayerService.IdentityResult result, List<RoomView> activeRooms) {
+		return new StatusResponse(result.player().publicId(), result.player().secretId(), result.player().name(), result.player().avatar(), result.freshIdentity(), activeRooms);
 	}
 }
