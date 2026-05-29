@@ -3,6 +3,7 @@ import {HttpClient} from "@angular/common/http";
 
 import {Observable} from "rxjs";
 
+import {PlayerView, RoomView} from "../model/atrium-event";
 import {AuthenticationService} from "./authentication.service";
 
 const baseUrl = "/api/atrium";
@@ -20,7 +21,7 @@ export class RequestService {
 	}
 
 	updateProfile() {
-		return this.httpClient.post<void>(`${baseUrl}/profile`, {
+		return this.httpClient.post<PlayerView>(`${baseUrl}/profile`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
 			name: this.authenticationService.name(),
@@ -28,26 +29,20 @@ export class RequestService {
 		});
 	}
 
-	createRoom(minPlayers: number, maxPlayers: number, isPrivate: boolean) {
-		return this.httpClient.post<RoomDTO>(`${baseUrl}/rooms`, {
+	createRoom(isPrivate: boolean) {
+		return this.httpClient.post<RoomView>(`${baseUrl}/rooms`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
-			minPlayers,
-			maxPlayers,
 			isPrivate,
 		});
 	}
 
-	listPublicRooms() {
-		return this.httpClient.get<RoomDTO[]>(`${baseUrl}/rooms`);
-	}
-
 	getRoom(code: string) {
-		return this.httpClient.get<RoomDTO>(`${baseUrl}/rooms/${code}`);
+		return this.httpClient.get<RoomView>(`${baseUrl}/rooms/${code}`);
 	}
 
 	joinRoom(code: string) {
-		return this.httpClient.post<RoomDTO>(`${baseUrl}/rooms/${code}/join`, {
+		return this.httpClient.post<RoomView>(`${baseUrl}/rooms/${code}/join`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
 		});
@@ -77,25 +72,26 @@ export class RequestService {
 		});
 	}
 
-	updateSettings(code: string, minPlayers: number | undefined, maxPlayers: number | undefined, isPrivate: boolean | undefined) {
-		return this.httpClient.patch<RoomDTO>(`${baseUrl}/rooms/${code}/settings`, {
+	updateSettings(code: string, name: string, minPlayers: number, maxPlayers: number, isPrivate: boolean) {
+		return this.httpClient.patch<RoomView>(`${baseUrl}/rooms/${code}/settings`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
+			name,
 			minPlayers,
 			maxPlayers,
 			isPrivate,
 		});
 	}
 
-	startGame(code: string): Observable<RoomDTO> {
-		return this.httpClient.post<RoomDTO>(`${baseUrl}/rooms/${code}/start`, {
+	startGame(code: string): Observable<RoomView> {
+		return this.httpClient.post<RoomView>(`${baseUrl}/rooms/${code}/start`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
 		});
 	}
 
-	stopGame(code: string): Observable<RoomDTO> {
-		return this.httpClient.post<RoomDTO>(`${baseUrl}/rooms/${code}/stop`, {
+	stopGame(code: string): Observable<RoomView> {
+		return this.httpClient.post<RoomView>(`${baseUrl}/rooms/${code}/stop`, {
 			publicId: this.authenticationService.publicId(),
 			secretId: this.authenticationService.secretId(),
 		});
@@ -122,27 +118,5 @@ interface StatusResponse {
 	name: string;
 	avatar: string;
 	freshIdentity: boolean;
-	activeRooms: RoomDTO[];
-}
-
-interface PlayerDTO {
-	publicId: string;
-	name: string;
-	avatar: string;
-	status: "ACTIVE" | "DISCONNECTED";
-	joinedAt: string;
-}
-
-interface RoomDTO {
-	code: string;
-	name: string | null;
-	host: string;
-	players: PlayerDTO[];
-	minPlayers: number;
-	maxPlayers: number;
-	gameSettings: Record<string, unknown>;
-	isPrivate: boolean;
-	state: "LOBBY" | "IN_GAME";
-	createdAt: string;
-	lastActivityAt: string;
+	activeRooms: RoomView[];
 }

@@ -12,7 +12,6 @@
 	font-family: sans-serif, "Noto Color Emoji";
 	margin: 0;
 	padding: 0;
-	user-select: none;
 	--p-avatar-xl-width: 8rem;
 	--p-avatar-xl-icon-size: 4rem;
 	--p-avatar-xl-font-size: 4rem;
@@ -73,6 +72,10 @@ iconify-icon {
 
 .spacing {
 	flex-grow: 1;
+}
+
+.wrap {
+	flex-wrap: wrap;
 }
 
 .wrapper {

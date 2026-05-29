@@ -11,7 +11,10 @@ import java.util.UUID;
  * Request body for {@code PATCH /api/atrium/rooms/{code}/settings}. Host-only and only
  * permitted while the room is in {@link RoomState#LOBBY}. Any
  * field left {@code null} keeps its current value. {@link #name}
- * is optional.
+ * is optional. When {@link #minPlayers} and {@link #maxPlayers} are supplied, the
+ * server swaps them if needed and clamps them into the room's effective absolute
+ * bounds. The update is still rejected when the resulting {@code maxPlayers} would
+ * exclude players already in the room.
  */
 public record UpdateRoomSettingsRequest(@NotNull UUID publicId, @NotNull UUID secretId, @Nullable String name, @Nullable Integer minPlayers, @Nullable Integer maxPlayers, @Nullable GameSettings gameSettings, @Nullable Boolean isPrivate) {
 }

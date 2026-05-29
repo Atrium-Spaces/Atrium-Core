@@ -1,22 +1,42 @@
-import {ChangeDetectionStrategy, ChangeDetectorRef, Component, inject} from "@angular/core";
-import {ActivatedRoute} from "@angular/router";
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, effect, inject, model, signal} from "@angular/core";
+import {FormsModule} from "@angular/forms";
+import {Router} from "@angular/router";
 
 import {TranslocoDirective} from "@jsverse/transloco";
 import {ButtonModule} from "primeng/button";
+import {DividerModule} from "primeng/divider";
+import {OverlayBadgeModule} from "primeng/overlaybadge";
+import {PanelModule} from "primeng/panel";
+import {SliderModule} from "primeng/slider";
+import {ToggleSwitchModule} from "primeng/toggleswitch";
 import {TooltipModule} from "primeng/tooltip";
 
-import {HostChangedEvent, PlayerDisconnectedEvent, PlayerJoinedEvent, PlayerKickedEvent, PlayerLeftEvent, PlayerReconnectedEvent, PlayerUpdatedEvent, RoomEvent, RoomRoomDeletedEvent, RoomSnapshotEvent, SettingsChangedEvent, StateChangedEvent} from "../../model/atrium-event";
+import {HostChangedEvent, PlayerDisconnectedEvent, PlayerJoinedEvent, PlayerKickedEvent, PlayerLeftEvent, PlayerReconnectedEvent, PlayerUpdatedEvent, PlayerView, RoomEvent, RoomSnapshotEvent, RoomView, SettingsChangedEvent, StateChangedEvent} from "../../model/atrium-event";
+import {AuthenticationService} from "../../service/authentication.service";
 import {RequestService} from "../../service/request.service";
+import {getRoomCodeFromUrl} from "../../utility/utilities";
 import {WebSocketProvider} from "../../utility/websocket-provider";
+import {ButtonWithLoadingComponent} from "../button-with-loading/button-with-loading.component";
+import {EditSettingsComponent} from "../edit-settings/edit-settings.component";
 import {HeaderComponent} from "../header/header.component";
+import {ProfileComponent} from "../profile/profile.component";
 
 @Component({
 	selector: "app-room",
 	changeDetection: ChangeDetectionStrategy.OnPush,
 	imports: [
 		ButtonModule,
-		TooltipModule,
+		ButtonWithLoadingComponent,
+		DividerModule,
+		EditSettingsComponent,
+		FormsModule,
 		HeaderComponent,
+		OverlayBadgeModule,
+		PanelModule,
+		ProfileComponent,
+		SliderModule,
+		ToggleSwitchModule,
+		TooltipModule,
 		TranslocoDirective,
 	],
 	templateUrl: "./room.component.html",
@@ -24,22 +44,46 @@ import {HeaderComponent} from "../header/header.component";
 })
 export class RoomComponent extends WebSocketProvider<RoomEvent> {
 	private readonly changeDetectorRef = inject(ChangeDetectorRef);
+	private readonly router = inject(Router);
+	private readonly authenticationService = inject(AuthenticationService);
 	private readonly requestService = inject(RequestService);
-	private readonly activatedRoute = inject(ActivatedRoute);
 
-	private readonly roomCode: string;
+	protected readonly roomCode: string;
+
+	protected readonly room;
+	protected joinedRoom = signal(false);
+	protected dialogVisible = model(false);
 
 	constructor() {
 		super();
-		this.roomCode = this.activatedRoute.snapshot.paramMap.get("code")!;
+		this.roomCode = getRoomCodeFromUrl(this.router.url)!;
+		this.room = signal<RoomView>({
+			code: this.roomCode,
+			name: null,
+			host: "",
+			players: [],
+			minPlayers: 1,
+			maxPlayers: 1,
+			absoluteMinPlayers: 1,
+			absoluteMaxPlayers: 1,
+			gameSettings: {},
+			isPrivate: true,
+			state: "LOBBY",
+			createdAt: "",
+			lastActivityAt: "",
+		});
+
+		effect(() => {
+			const isMember = this.room().players.some(player => player.publicId === this.authenticationService.publicId());
+			this.joinedRoom.set(isMember);
+		});
 	}
 
 	protected createWebSocket() {
 		return this.requestService.subscribeToRoom(this.roomCode);
 	}
 
-	protected onEvent(event: RoomEvent): void {
-		console.log(event);
+	protected onEvent(event: RoomEvent) {
 		switch (event.type) {
 			case "snapshot":
 				this.onSnapshot(event);
@@ -72,64 +116,94 @@ export class RoomComponent extends WebSocketProvider<RoomEvent> {
 				this.onStateChanged(event);
 				break;
 			case "roomDeleted":
-				this.onRoomDeleted(event);
+				this.navigateToHome();
 				break;
 		}
 		this.changeDetectorRef.markForCheck();
 	}
 
+	getHostName() {
+		return this.room().players.find(player => player.publicId === this.room().host)?.name;
+	}
+
+	isHost() {
+		return this.authenticationService.publicId() === this.room().host;
+	}
+
+	onJoinRoomChanged(joinedRoom: boolean) {
+		if (joinedRoom === this.joinedRoom()) {
+			return;
+		}
+
+		this.joinedRoom.set(joinedRoom);
+		if (joinedRoom) {
+			this.requestService.joinRoom(this.roomCode).subscribe({error: () => this.joinedRoom.set(false)});
+		} else {
+			this.requestService.leaveRoom(this.roomCode).subscribe({error: () => this.joinedRoom.set(true)});
+		}
+	}
+
+	startGame() {
+		return this.requestService.startGame(this.roomCode);
+	}
+
+	stopGame() {
+		return this.requestService.stopGame(this.roomCode);
+	}
+
+	deleteRoom() {
+		return this.requestService.deleteRoom(this.roomCode);
+	}
+
+	navigateToHome() {
+		this.router.navigate(["/"]).then();
+	}
+
+	kickPlayer(playerId: string) {
+		this.requestService.kickPlayer(this.roomCode, playerId).subscribe();
+	}
+
+	private updatePlayers(players: PlayerView[]) {
+		this.room.set({...this.room(), players});
+	}
+
 	private onSnapshot(event: RoomSnapshotEvent) {
-		console.log(event);
-		// TODO
+		this.room.set(event.room);
 	}
 
 	private onPlayerJoined(event: PlayerJoinedEvent) {
-		console.log(event);
-		// TODO
+		this.updatePlayers([...this.room().players, event.player]);
 	}
 
 	private onPlayerLeft(event: PlayerLeftEvent) {
-		console.log(event);
-		// TODO
+		this.updatePlayers(this.room().players.filter(player => player.publicId !== event.publicId));
 	}
 
 	private onPlayerKicked(event: PlayerKickedEvent) {
-		console.log(event);
-		// TODO
+		this.updatePlayers(this.room().players.filter(player => player.publicId !== event.publicId));
 	}
 
 	private onPlayerUpdated(event: PlayerUpdatedEvent) {
-		console.log(event);
-		// TODO
+		this.updatePlayers(this.room().players.map(player => player.publicId === event.player.publicId ? event.player : player));
 	}
 
 	private onPlayerDisconnected(event: PlayerDisconnectedEvent) {
-		console.log(event);
-		// TODO
+		this.updatePlayers(this.room().players.map(player => player.publicId === event.publicId ? {...player, status: "DISCONNECTED"} : player));
 	}
 
 	private onPlayerReconnected(event: PlayerReconnectedEvent) {
-		console.log(event);
-		// TODO
+		this.updatePlayers(this.room().players.map(player => player.publicId === event.publicId ? {...player, status: "ACTIVE"} : player));
 	}
 
 	private onHostChanged(event: HostChangedEvent) {
-		console.log(event);
-		// TODO
+		this.room.set({...this.room(), host: event.newHost});
 	}
 
 	private onSettingsChanged(event: SettingsChangedEvent) {
-		console.log(event);
-		// TODO
+		this.room.set(event.room);
 	}
 
 	private onStateChanged(event: StateChangedEvent) {
-		console.log(event);
-		// TODO
-	}
-
-	private onRoomDeleted(event: RoomRoomDeletedEvent) {
-		console.log(event);
-		// TODO
+		this.room.set({...this.room(), state: event.newState});
 	}
 }

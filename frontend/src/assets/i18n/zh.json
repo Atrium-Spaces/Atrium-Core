@@ -1,16 +1,41 @@
 {
-	"title": {
+	"common": {
+		"actions": {
+			"createRoom": "建立新房間",
+			"deleteRoom": "刪除房間",
+			"joinRoom": "加入房間",
+			"kickPlayer": "踢出玩家",
+			"roomSettings": "設定",
+			"save": "儲存",
+			"startGame": "開始遊戲",
+			"stopGame": "停止遊戲"
+		},
+		"labels": {
+			"name": "名稱",
+			"roomCode": "房間代碼",
+			"roomName": "房間名稱"
+		},
+		"states": {
+			"inGame": "遊戲中",
+			"lobby": "大廳"
+		}
+	},
+	"header": {
+		"darkTheme": "深色主題",
+		"language": "語言",
+		"lightTheme": "淺色主題"
+	},
+	"home": {
+		"noPublicRooms": "目前沒有公開房間。",
+		"publicRooms": "公開房間",
 		"welcome": "歡迎來到 Atrium。"
 	},
-	"menu": {
-		"language": "語言",
-		"lightTheme": "淺色主題",
-		"darkTheme": "深色主題"
-	},
-	"input": {
-		"name": "名稱",
-		"roomCode": "房間代碼",
-		"joinRoom": "加入房間",
-		"createRoom": "創建房間"
+	"room": {
+		"disconnected": "已斷線",
+		"playerRangeTooltip": "玩家人數範圍",
+		"playersTitle": "玩家 ({{count}})",
+		"privateRoom": "私人房間",
+		"publicRoom": "公開房間",
+		"untitledRoom": "{{name}} 主持的房間"
 	}
 }

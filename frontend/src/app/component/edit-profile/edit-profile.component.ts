@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, Component, effect, ElementRef, inject, model, signal, viewChild} from "@angular/core";
+import {ChangeDetectionStrategy, Component, effect, ElementRef, inject, model, OnDestroy, signal, viewChild} from "@angular/core";
 import {FormsModule, ReactiveFormsModule} from "@angular/forms";
 
 import {CompactEmoji} from "emojibase";
@@ -21,25 +21,25 @@ import {ProfileComponent} from "../profile/profile.component";
 	selector: "app-edit-profile",
 	changeDetection: ChangeDetectionStrategy.OnPush,
 	imports: [
+		ButtonModule,
 		DialogModule,
+		DividerModule,
+		FloatLabel,
 		FloatLabelModule,
-		InputTextModule,
+		FormsModule,
 		IconFieldModule,
 		InputIconModule,
-		ScrollerModule,
-		DividerModule,
-		ButtonModule,
-		FloatLabel,
 		InputText,
-		TranslocoDirective,
+		InputTextModule,
 		ProfileComponent,
 		ReactiveFormsModule,
-		FormsModule,
+		ScrollerModule,
+		TranslocoDirective,
 	],
 	templateUrl: "./edit-profile.component.html",
 	styleUrl: "./edit-profile.component.scss",
 })
-export class EditProfileComponent {
+export class EditProfileComponent implements OnDestroy {
 	private readonly requestService = inject(RequestService);
 	private readonly authenticationService = inject(AuthenticationService);
 
@@ -50,11 +50,12 @@ export class EditProfileComponent {
 
 	protected readonly emojis = signal<CompactEmoji[][]>([]);
 	protected readonly emojiButtonSize = 58;
-	protected readonly scrollBarWidth = 14;
+	protected readonly scrollBarWidth = 16;
 	protected readonly rowCount = signal(1);
 	private dialogVisibleUpdated = false;
 	private nameInputUpdated = false;
 	private timeoutId = 0;
+	private intervalId = 0;
 
 	constructor() {
 		effect(() => {
@@ -63,6 +64,10 @@ export class EditProfileComponent {
 				this.searchInput.set("");
 			} else if (this.dialogVisibleUpdated) {
 				this.requestService.updateProfile().subscribe({
+					next: player => {
+						this.authenticationService.name.set(player.name);
+						this.authenticationService.avatar.set(player.avatar);
+					},
 					error: () => this.requestService.init().subscribe({
 						next: ({publicId, secretId, name, avatar}) => {
 							this.authenticationService.publicId.set(publicId);
@@ -86,7 +91,7 @@ export class EditProfileComponent {
 			this.nameInputUpdated = true;
 		});
 
-		setInterval(() => {
+		this.intervalId = setInterval(() => {
 			const width = this.wrapperRef()?.nativeElement?.clientWidth ?? 0;
 			if (width > 0) {
 				const rowCount = Math.max(1, Math.min(8, Math.floor((width - this.scrollBarWidth) / this.emojiButtonSize)));
@@ -95,12 +100,18 @@ export class EditProfileComponent {
 					this.writeEmojis("");
 				}
 			}
-		});
+		}, 200);
 
 		this.searchInput.subscribe(search => {
 			clearTimeout(this.timeoutId);
 			this.timeoutId = setTimeout(() => this.writeEmojis(search), 200);
 		});
+	}
+
+	ngOnDestroy() {
+		clearTimeout(this.timeoutId);
+		clearInterval(this.intervalId);
+		this.intervalId = 0;
 	}
 
 	selectEmoji(compactEmoji: CompactEmoji) {

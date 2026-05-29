@@ -15,17 +15,19 @@ import java.util.UUID;
  * {@link Room} on the public API surface so callers don't have
  * to do a second round-trip to resolve names / avatars.
  *
- * @param code           unique room code (6-character upper-case alphanumeric)
- * @param name           optional display name for room lists; {@code null} means unnamed
- * @param host           public id of the host player
- * @param players        expanded player profiles in join order
- * @param minPlayers     floor required to start a game
- * @param maxPlayers     cap on player count
- * @param gameSettings   polymorphic game-specific settings
- * @param isPrivate      when {@code true}, hidden from the public listing
- * @param state          {@link RoomState#LOBBY} or {@link RoomState#IN_GAME}
- * @param createdAt      wall-clock creation time
- * @param lastActivityAt last time anything in this room changed
+ * @param code               unique room code (6-character upper-case alphanumeric)
+ * @param name               optional display name for room lists; {@code null} means unnamed
+ * @param host               public id of the host player
+ * @param players            expanded player profiles in join order
+ * @param minPlayers         floor required to start a game
+ * @param maxPlayers         cap on player count
+ * @param absoluteMinPlayers effective hard floor after applying global and game-specific bounds
+ * @param absoluteMaxPlayers effective hard ceiling after applying global and game-specific bounds
+ * @param gameSettings       polymorphic game-specific settings
+ * @param isPrivate          when {@code true}, hidden from the public listing
+ * @param state              {@link RoomState#LOBBY} or {@link RoomState#IN_GAME}
+ * @param createdAt          wall-clock creation time
+ * @param lastActivityAt     last time anything in this room changed
  */
-public record RoomView(String code, @Nullable String name, UUID host, List<PlayerView> players, int minPlayers, int maxPlayers, GameSettings gameSettings, boolean isPrivate, RoomState state, Instant createdAt, Instant lastActivityAt) {
+public record RoomView(String code, @Nullable String name, UUID host, List<PlayerView> players, int minPlayers, int maxPlayers, int absoluteMinPlayers, int absoluteMaxPlayers, GameSettings gameSettings, boolean isPrivate, RoomState state, Instant createdAt, Instant lastActivityAt) {
 }

@@ -7,7 +7,7 @@ import org.atrium.core.api.dto.*;
 import org.atrium.core.domain.service.PlayerService;
 import org.atrium.core.domain.service.RoomService;
 import org.atrium.core.domain.service.RoomViewAssembler;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -43,10 +43,10 @@ public final class AtriumController {
 	}
 
 	@PostMapping("/profile")
-	public Mono<Void> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
+	public Mono<PlayerView> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
 		log.debug("Profile update requested for player {}", request.publicId());
 		return playerService.updateProfile(request.publicId(), request.secretId(), request.name(), request.avatar())
-			.flatMap(roomService::broadcastProfileUpdate);
+			.flatMap(player -> roomService.broadcastProfileUpdate(player).thenReturn(roomViewAssembler.toPlayerView(player)));
 	}
 
 	@GetMapping("/rooms")
@@ -62,10 +62,10 @@ public final class AtriumController {
 	}
 
 	@PostMapping("/rooms")
-	public Mono<ResponseEntity<RoomView>> createRoom(@Valid @RequestBody CreateRoomRequest request) {
+	@ResponseStatus(HttpStatus.CREATED)
+	public Mono<RoomView> createRoom(@Valid @RequestBody CreateRoomRequest request) {
 		log.debug("Create room requested by player {}", request.publicId());
-		return roomService.createRoom(request.publicId(), request.secretId(), request.name(), request.minPlayers(), request.maxPlayers(), request.gameSettings(), request.isPrivate())
-			.map(roomView -> ResponseEntity.status(201).body(roomView));
+		return roomService.createRoom(request.publicId(), request.secretId(), request.name(), request.minPlayers(), request.maxPlayers(), request.gameSettings(), request.isPrivate());
 	}
 
 	@PostMapping("/rooms/{code}/join")

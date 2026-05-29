@@ -1,26 +1,54 @@
 <div *transloco="let t" class="column gap">
-	<app-header title=""/>
+	<app-header/>
 
-	<div class="column gap center main">
-		<h1>{{ t('title.welcome') }}</h1>
+	<div class="column gap center">
+		<h1>{{ t('home.welcome') }}</h1>
 
 		<p-button (onClick)="dialogVisible.set(true)" text>
 			<div class="profile">
-				<app-profile [showName]="true"/>
+				<app-profile [showName]="true" [large]="true"/>
 			</div>
 		</p-button>
 
 		<div class="column input">
-			<form class="row center gap-small input" (ngSubmit)="joinRoom($event, roomCode.value)">
+			<form class="row center gap-small input" (ngSubmit)="$event.stopPropagation(); navigateToRoom(roomCode.value)">
 				<p-float-label class="input" variant="in">
-					<input #roomCode pInputText id="roomCode" (input)="updateRoomCode(roomCode)" [disabled]="loading()" autocomplete="off" spellcheck="false" [maxLength]="roomCodeLength" fluid/>
-					<label for="roomCode">{{ t('input.roomCode') }}</label>
+					<input #roomCode pInputText id="roomCode" (input)="updateRoomCode(roomCode)" autocomplete="off" spellcheck="false" [maxLength]="roomCodeLength" fluid/>
+					<label for="roomCode">{{ t('common.labels.roomCode') }}</label>
 				</p-float-label>
-				<p-button icon="pi pi-arrow-right" type="submit" rounded text [disabled]="loading() || !roomCode.value || roomCode.value.length < roomCodeLength" [pTooltip]="t('input.joinRoom')" tooltipPosition="bottom"/>
+				<p-button icon="pi pi-arrow-right" type="submit" rounded text [disabled]="!roomCode.value || roomCode.value.length < roomCodeLength" [pTooltip]="t('common.actions.joinRoom')" tooltipPosition="bottom"/>
 			</form>
 			<p-divider/>
-			<p-button class="input" icon="pi pi-plus" rounded text [label]="t('input.createRoom')" (onClick)="createRoom()" [disabled]="loading()" fluid/>
+			<app-button-with-loading class="input" [label]="t('common.actions.createRoom')" icon="pi pi-plus" [clickAction]="createRoom()" (clickSuccess)="navigateToRoom($event.code)"/>
 		</div>
+		<div></div>
+
+		<p-panel class="input" [header]="t('home.publicRooms')" [toggleable]="true">
+			<div class="column">
+				@if (publicRooms().length === 0) {
+					<div class="muted">{{ t('home.noPublicRooms') }}</div>
+				} @else {
+					@for (room of publicRooms(); track $index) {
+						@if ($index > 0) {
+							<p-divider/>
+						}
+						<div class="row center gap-small">
+							<div class="column gap-small spacing">
+								<div>{{ room.name ?? t('room.untitledRoom', {name: getHostName(room)}) }}</div>
+								<div class="muted">{{ room.players.length }}/{{ room.maxPlayers }}</div>
+								<div class="muted">{{ t(room.state === 'LOBBY' ? 'common.states.lobby' : 'common.states.inGame') }}</div>
+								<div class="row gap-small">
+									@for (player of room.players; track $index) {
+										<app-profile [avatar]="player.avatar" [pTooltip]="player.name" tooltipPosition="bottom"/>
+									}
+								</div>
+							</div>
+							<p-button icon="pi pi-arrow-right" rounded text (onClick)="navigateToRoom(room.code)" [pTooltip]="t('common.actions.joinRoom')" tooltipPosition="bottom"/>
+						</div>
+					}
+				}
+			</div>
+		</p-panel>
 	</div>
 </div>
 

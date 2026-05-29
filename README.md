@@ -8,7 +8,8 @@ Downstream projects depending on Atrium Core get:
 
 - a complete reactive REST + WebSocket API for room lifecycle (create, join, kick,
   leave, delete, start / stop game) and player identity (cookies-driven, two-UUID
-  scheme);
+  scheme), including server-normalised profile responses and room views that expose
+  both effective and absolute player-count bounds;
 - Redis-backed state and pub/sub fan-out across instances;
 - a polymorphic `GameSettings` extension point so the host project can plug its
   own game-specific configuration in via Jackson `@JsonTypeInfo`;

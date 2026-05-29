@@ -3,6 +3,7 @@ package org.atrium.core.autoconfigure;
 import lombok.Getter;
 import lombok.Setter;
 
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.List;
@@ -15,7 +16,7 @@ import java.util.List;
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "atrium.core")
-public final class AtriumProperties {
+public final class AtriumProperties implements InitializingBean {
 
 	/**
 	 * Length of each generated room code, in characters.
@@ -73,4 +74,19 @@ public final class AtriumProperties {
 	 * CORS origins for the REST surface; {@code "*"} for permissive development.
 	 */
 	private List<String> corsAllowedOrigins = List.of("*");
+
+	/**
+	 * Fail fast during application startup when the operator configures impossible global
+	 * player-count bounds. Room creation and settings updates can then safely assume these
+	 * baseline bounds are stable for the lifetime of the app.
+	 */
+	@Override
+	public void afterPropertiesSet() {
+		if (absoluteMinPlayers < 1) {
+			throw new IllegalStateException("atrium.core.absolute-min-players must be at least 1");
+		}
+		if (absoluteMaxPlayers < absoluteMinPlayers) {
+			throw new IllegalStateException("atrium.core.absolute-max-players must be at least atrium.core.absolute-min-players");
+		}
+	}
 }

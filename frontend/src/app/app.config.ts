@@ -1,5 +1,5 @@
-import {ApplicationConfig, isDevMode} from "@angular/core";
 import {provideHttpClient} from "@angular/common/http";
+import {ApplicationConfig, isDevMode} from "@angular/core";
 import {provideRouter} from "@angular/router";
 
 import {providePrimeNG} from "primeng/config";

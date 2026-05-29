@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, model} from "@angular/core";
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, model, signal} from "@angular/core";
 import {FormsModule} from "@angular/forms";
 import {Router} from "@angular/router";
 
@@ -8,12 +8,14 @@ import {ButtonModule} from "primeng/button";
 import {DividerModule} from "primeng/divider";
 import {FloatLabelModule} from "primeng/floatlabel";
 import {InputTextModule} from "primeng/inputtext";
+import {PanelModule} from "primeng/panel";
 import {TooltipModule} from "primeng/tooltip";
 
-import {HomeEvent, HomeRoomCreatedEvent, HomeRoomDeletedEvent, HomeRoomUpdatedEvent, HomeSnapshotEvent} from "../../model/atrium-event";
+import {HomeEvent, HomeRoomCreatedEvent, HomeRoomDeletedEvent, HomeRoomUpdatedEvent, HomeSnapshotEvent, RoomView} from "../../model/atrium-event";
 import {RequestService} from "../../service/request.service";
-
+import {cleanRoomCode} from "../../utility/utilities";
 import {WebSocketProvider} from "../../utility/websocket-provider";
+import {ButtonWithLoadingComponent} from "../button-with-loading/button-with-loading.component";
 import {EditProfileComponent} from "../edit-profile/edit-profile.component";
 import {HeaderComponent} from "../header/header.component";
 import {ProfileComponent} from "../profile/profile.component";
@@ -23,16 +25,18 @@ import {ProfileComponent} from "../profile/profile.component";
 	changeDetection: ChangeDetectionStrategy.OnPush,
 	imports: [
 		AvatarModule,
-		FloatLabelModule,
-		InputTextModule,
 		ButtonModule,
-		TooltipModule,
+		ButtonWithLoadingComponent,
 		DividerModule,
-		TranslocoDirective,
-		HeaderComponent,
-		FormsModule,
 		EditProfileComponent,
+		FloatLabelModule,
+		FormsModule,
+		HeaderComponent,
+		InputTextModule,
+		PanelModule,
 		ProfileComponent,
+		TooltipModule,
+		TranslocoDirective,
 	],
 	templateUrl: "./home.component.html",
 	styleUrl: "./home.component.scss",
@@ -43,37 +47,35 @@ export class HomeComponent extends WebSocketProvider<HomeEvent> {
 	private readonly requestService = inject(RequestService);
 
 	protected dialogVisible = model(false);
-	protected readonly loading = model(false);
 	protected readonly roomCodeLength = 6;
+	protected readonly publicRooms = signal<RoomView[]>([]);
 
 	updateRoomCode(roomCodeInput: HTMLInputElement) {
 		const value = roomCodeInput.value;
-		const newValue = value.toUpperCase().replaceAll(/[^A-Z\d]/g, "");
+		const newValue = cleanRoomCode(value);
 		if (newValue !== value) {
 			roomCodeInput.value = newValue;
 		}
 	}
 
-	joinRoom(event: SubmitEvent, roomCode: string) {
-		event.stopPropagation();
+
+	createRoom() {
+		return this.requestService.createRoom(true);
+	}
+
+	navigateToRoom(roomCode: string) {
 		this.router.navigate(["/room", roomCode]).then();
 	}
 
-	createRoom() {
-		this.requestService.createRoom(1, 1, true).subscribe({
-			next: room => {
-				this.loading.set(false);
-				this.router.navigate(["/room", room.code]).then();
-			},
-			error: () => this.loading.set(false),
-		});
+	getHostName(room: RoomView) {
+		return room.players.find(player => player.publicId === room.host)?.name ?? room.host;
 	}
 
 	protected createWebSocket() {
 		return this.requestService.subscribeToHome();
 	}
 
-	protected onEvent(event: HomeEvent): void {
+	protected onEvent(event: HomeEvent) {
 		switch (event.type) {
 			case "snapshot":
 				this.onSnapshot(event);
@@ -92,22 +94,27 @@ export class HomeComponent extends WebSocketProvider<HomeEvent> {
 	}
 
 	private onSnapshot(event: HomeSnapshotEvent) {
-		console.log(event);
-		// TODO
+		this.publicRooms.set(this.sortByLastActivity(event.rooms));
 	}
 
 	private onRoomCreated(event: HomeRoomCreatedEvent) {
-		console.log(event);
-		// TODO
+		this.upsertRoom(event.room);
 	}
 
 	private onRoomUpdated(event: HomeRoomUpdatedEvent) {
-		console.log(event);
-		// TODO
+		this.upsertRoom(event.room);
 	}
 
 	private onRoomDeleted(event: HomeRoomDeletedEvent) {
-		console.log(event);
-		// TODO
+		this.publicRooms.set(this.publicRooms().filter(room => room.code !== event.roomCode));
+	}
+
+	private upsertRoom(updatedRoom: RoomView) {
+		const roomsWithoutUpdated = this.publicRooms().filter(room => room.code !== updatedRoom.code);
+		this.publicRooms.set(this.sortByLastActivity([updatedRoom, ...roomsWithoutUpdated]));
+	}
+
+	private sortByLastActivity(rooms: RoomView[]) {
+		return [...rooms].sort((leftRoom, rightRoom) => Date.parse(rightRoom.lastActivityAt) - Date.parse(leftRoom.lastActivityAt));
 	}
 }

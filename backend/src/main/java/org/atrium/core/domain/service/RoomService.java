@@ -52,6 +52,7 @@ public final class RoomService {
 	private final RoomCodeGenerator codeGenerator;
 	private final HomeBroadcastService homeBroadcastService;
 	private final RoomBroadcastService broadcastService;
+	private final RoomPlayerLimitsResolver roomPlayerLimitsResolver;
 	private final RoomViewAssembler viewAssembler;
 	private final GameLifecycleListener gameLifecycleListener;
 	private final AtriumProperties properties;
@@ -96,16 +97,11 @@ public final class RoomService {
 			.flatMap(player -> {
 				final String name = cleanRoomName(requestedName);
 				final GameSettings settings = requestedSettings != null ? requestedSettings : new DefaultGameSettings();
-				final int minPlayers = resolveMinPlayers(requestedMinPlayers, settings);
-				final int maxPlayers = resolveMaxPlayers(requestedMaxPlayers, settings);
-
-				if (minPlayers > maxPlayers) {
-					return Mono.error(AtriumException.badRequest("minPlayers cannot be above maxPlayers"));
-				}
+				final RoomPlayerLimitsResolver.NormalizedPlayerLimits normalizedPlayerLimits = roomPlayerLimitsResolver.normalizeForCreate(requestedMinPlayers, requestedMaxPlayers, settings);
 
 				return codeGenerator.next().flatMap(code -> {
 					final Instant now = Instant.now();
-					final Room room = new Room(code, name, publicId, List.of(publicId), minPlayers, maxPlayers, settings, isPrivate, RoomState.LOBBY, now, now);
+					final Room room = new Room(code, name, publicId, List.of(publicId), normalizedPlayerLimits.minPlayers(), normalizedPlayerLimits.maxPlayers(), settings, isPrivate, RoomState.LOBBY, now, now);
 					return roomRepository.saveNew(room)
 						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room code collision during create; please retry")))
 						.then(playerRepository.save(player.withRoomAdded(code)))
@@ -407,21 +403,14 @@ public final class RoomService {
 
 					final GameSettings newSettings = gameSettings != null ? gameSettings : room.gameSettings();
 					final String newName = name != null ? cleanRoomName(name) : room.name();
-					final int requestedOrCurrentMinPlayers = minPlayers != null ? minPlayers : room.minPlayers();
-					final int requestedOrCurrentMaxPlayers = maxPlayers != null ? maxPlayers : room.maxPlayers();
-					final int newMinPlayers = resolveMinPlayers(requestedOrCurrentMinPlayers, newSettings);
-					final int newMaxPlayers = resolveMaxPlayers(requestedOrCurrentMaxPlayers, newSettings);
+					final RoomPlayerLimitsResolver.NormalizedPlayerLimits normalizedPlayerLimits = roomPlayerLimitsResolver.normalizeForUpdate(minPlayers, maxPlayers, room.minPlayers(), room.maxPlayers(), newSettings);
 
-					if (newMinPlayers > newMaxPlayers) {
-						return Mono.error(AtriumException.badRequest("minPlayers cannot be above maxPlayers"));
-					}
-
-					if (newMaxPlayers < room.players().size()) {
+					if (normalizedPlayerLimits.maxPlayers() < room.players().size()) {
 						return Mono.error(AtriumException.badRequest("maxPlayers cannot be below current member count (" + room.players().size() + ")"));
 					}
 
 					final boolean newPrivate = isPrivate != null ? isPrivate : room.isPrivate();
-					final Room updatedRoom = room.withSettings(newName, newMinPlayers, newMaxPlayers, newSettings, newPrivate);
+					final Room updatedRoom = room.withSettings(newName, normalizedPlayerLimits.minPlayers(), normalizedPlayerLimits.maxPlayers(), newSettings, newPrivate);
 					return roomRepository.saveIfVersion(updatedRoom, versionedRoom.version())
 						.flatMap(saved -> saved ? Mono.empty() : Mono.error(AtriumException.conflict("Room was updated concurrently; retry settings update")))
 						.then(viewAssembler.assemble(updatedRoom))
@@ -445,7 +434,7 @@ public final class RoomService {
 
 		log.debug("Broadcasting profile update for player {} in rooms {}", player.publicId(), roomCodes);
 		return Flux.fromIterable(roomCodes)
-			.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerUpdated(roomCode, Instant.now(), viewAssembler.toPlayerView(player, Instant.now())))
+			.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerUpdated(roomCode, Instant.now(), viewAssembler.toPlayerView(player)))
 				.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated)))
 			.then();
 	}
@@ -468,10 +457,11 @@ public final class RoomService {
 				final List<String> roomCodes = player.roomCodes();
 				log.debug("Marking player {} as DISCONNECTED (rooms={})", publicId, roomCodes);
 
-				return playerRepository.save(player.withStatus(PlayerStatus.DISCONNECTED)).then(Flux.fromIterable(roomCodes)
-					.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerDisconnected(roomCode, Instant.now(), publicId))
-						.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated)))
-					.then());
+				return playerRepository.save(player.withStatus(PlayerStatus.DISCONNECTED))
+					.thenMany(Flux.fromIterable(roomCodes)
+						.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerDisconnected(roomCode, Instant.now(), publicId))
+							.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated))))
+					.then();
 			});
 	}
 
@@ -493,75 +483,12 @@ public final class RoomService {
 				final List<String> roomCodes = player.roomCodes();
 				log.debug("Marking player {} as ACTIVE (rooms={})", publicId, roomCodes);
 
-				return playerRepository.save(player.withStatus(PlayerStatus.ACTIVE)).then(Flux.fromIterable(roomCodes)
-					.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerReconnected(roomCode, Instant.now(), publicId))
-						.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated)))
-					.then());
+				return playerRepository.save(player.withStatus(PlayerStatus.ACTIVE))
+					.thenMany(Flux.fromIterable(roomCodes)
+						.flatMap(roomCode -> broadcastService.publish(new RoomEvent.PlayerReconnected(roomCode, Instant.now(), publicId))
+							.then(roomRepository.findByCode(roomCode).flatMap(this::publishHomeRoomUpdated))))
+					.then();
 			});
-	}
-
-	/**
-	 * Resolves the effective minimum number of players for a room, applying game-specific
-	 * bounds from {@link GameSettings#absoluteMinPlayersOverride()} and
-	 * {@link GameSettings#absoluteMaxPlayersOverride()}.
-	 *
-	 * @param requestedMinPlayers the requested value, or {@code null} to use the default
-	 * @param gameSettings        the game settings providing optional bounds overrides
-	 * @return the validated minPlayers value within the game's absolute bounds
-	 * @throws AtriumException if the requested value is outside the absolute bounds
-	 */
-	private int resolveMinPlayers(@Nullable Integer requestedMinPlayers, GameSettings gameSettings) {
-		final int minimumAllowedPlayers = effectiveAbsoluteMinPlayers(gameSettings);
-		final int maximumAllowedPlayers = effectiveAbsoluteMaxPlayers(gameSettings);
-		final int requestedOrDefaultMinPlayers = requestedMinPlayers != null ? requestedMinPlayers : properties.getDefaultMinPlayers();
-		if (requestedOrDefaultMinPlayers < minimumAllowedPlayers) {
-			throw AtriumException.badRequest("minPlayers must be at least " + minimumAllowedPlayers);
-		}
-		if (requestedOrDefaultMinPlayers > maximumAllowedPlayers) {
-			throw AtriumException.badRequest("minPlayers must not exceed " + maximumAllowedPlayers);
-		}
-		return requestedOrDefaultMinPlayers;
-	}
-
-	/**
-	 * Resolves the effective maximum number of players for a room, applying game-specific
-	 * bounds from {@link GameSettings#absoluteMinPlayersOverride()} and
-	 * {@link GameSettings#absoluteMaxPlayersOverride()}.
-	 *
-	 * @param requestedMaxPlayers the requested value, or {@code null} to use the default
-	 * @param gameSettings        the game settings providing optional bounds overrides
-	 * @return the validated maxPlayers value within the game's absolute bounds
-	 * @throws AtriumException if the requested value is outside the absolute bounds
-	 */
-	private int resolveMaxPlayers(@Nullable Integer requestedMaxPlayers, GameSettings gameSettings) {
-		final int minimumAllowedPlayers = effectiveAbsoluteMinPlayers(gameSettings);
-		final int maximumAllowedPlayers = effectiveAbsoluteMaxPlayers(gameSettings);
-		final int requestedOrDefaultMaxPlayers = requestedMaxPlayers != null ? requestedMaxPlayers : properties.getDefaultMaxPlayers();
-		if (requestedOrDefaultMaxPlayers < minimumAllowedPlayers) {
-			throw AtriumException.badRequest("maxPlayers must be at least " + minimumAllowedPlayers);
-		}
-		if (requestedOrDefaultMaxPlayers > maximumAllowedPlayers) {
-			throw AtriumException.badRequest("maxPlayers must not exceed " + maximumAllowedPlayers);
-		}
-		return requestedOrDefaultMaxPlayers;
-	}
-
-	private int effectiveAbsoluteMinPlayers(GameSettings gameSettings) {
-		final Integer absoluteMinPlayersOverride = gameSettings.absoluteMinPlayersOverride();
-		final Integer absoluteMaxPlayersOverride = gameSettings.absoluteMaxPlayersOverride();
-		final int gameSettingMinimumPlayers = absoluteMinPlayersOverride != null ? absoluteMinPlayersOverride : properties.getAbsoluteMinPlayers();
-		final int gameSettingMaximumPlayers = absoluteMaxPlayersOverride != null ? absoluteMaxPlayersOverride : properties.getAbsoluteMaxPlayers();
-		validateAbsoluteBounds(gameSettingMinimumPlayers, gameSettingMaximumPlayers);
-		return gameSettingMinimumPlayers;
-	}
-
-	private int effectiveAbsoluteMaxPlayers(GameSettings gameSettings) {
-		final Integer absoluteMinPlayersOverride = gameSettings.absoluteMinPlayersOverride();
-		final Integer absoluteMaxPlayersOverride = gameSettings.absoluteMaxPlayersOverride();
-		final int gameSettingMinimumPlayers = absoluteMinPlayersOverride != null ? absoluteMinPlayersOverride : properties.getAbsoluteMinPlayers();
-		final int gameSettingMaximumPlayers = absoluteMaxPlayersOverride != null ? absoluteMaxPlayersOverride : properties.getAbsoluteMaxPlayers();
-		validateAbsoluteBounds(gameSettingMinimumPlayers, gameSettingMaximumPlayers);
-		return gameSettingMaximumPlayers;
 	}
 
 	/**
@@ -641,14 +568,6 @@ public final class RoomService {
 		return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
 	}
 
-	private static void validateAbsoluteBounds(int absoluteMinPlayers, int absoluteMaxPlayers) {
-		if (absoluteMinPlayers < 1) {
-			throw AtriumException.badRequest("absoluteMinPlayers must be at least 1");
-		}
-		if (absoluteMaxPlayers < absoluteMinPlayers) {
-			throw AtriumException.badRequest("absoluteMaxPlayers must be at least absoluteMinPlayers");
-		}
-	}
 
 	/**
 	 * Lifecycle extension hooks should not break the core lobby flow. A failing listener is

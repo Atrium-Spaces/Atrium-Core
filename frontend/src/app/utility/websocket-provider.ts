@@ -6,7 +6,7 @@ const maxReconnectDelay = 30000;
 @Directive()
 export abstract class WebSocketProvider<TEvent> implements OnInit, OnDestroy {
 	private webSocket?: WebSocket;
-	private timeoutId = 0;
+	private websocketReconnectTimeoutId = 0;
 	private reconnectAttempts = 0;
 	private shouldReconnect = true;
 
@@ -28,7 +28,13 @@ export abstract class WebSocketProvider<TEvent> implements OnInit, OnDestroy {
 		this.closeWebSocket();
 		this.webSocket = this.createWebSocket();
 		this.webSocket.onopen = () => this.reconnectAttempts = 0;
-		this.webSocket.onmessage = (event: MessageEvent) => this.onEvent(JSON.parse(event.data) as TEvent);
+		this.webSocket.onmessage = (event: MessageEvent) => {
+			try {
+				this.onEvent(JSON.parse(event.data) as TEvent);
+			} catch {
+				// Ignore malformed frames and keep the socket alive for subsequent events.
+			}
+		};
 		this.webSocket.onerror = () => this.webSocket?.close();
 		this.webSocket.onclose = () => {
 			this.webSocket = undefined;
@@ -40,13 +46,13 @@ export abstract class WebSocketProvider<TEvent> implements OnInit, OnDestroy {
 
 	private scheduleReconnect() {
 		this.reconnectAttempts++;
-		this.timeoutId = setTimeout(() => this.connect(), Math.min(startingReconnectDelay * 2 ** this.reconnectAttempts, maxReconnectDelay));
+		this.websocketReconnectTimeoutId = setTimeout(() => this.connect(), Math.min(startingReconnectDelay * 2 ** this.reconnectAttempts, maxReconnectDelay));
 	}
 
 	private clearReconnectTimeout() {
-		if (this.timeoutId !== 0) {
-			clearTimeout(this.timeoutId);
-			this.timeoutId = 0;
+		if (this.websocketReconnectTimeoutId !== 0) {
+			clearTimeout(this.websocketReconnectTimeoutId);
+			this.websocketReconnectTimeoutId = 0;
 		}
 	}
 

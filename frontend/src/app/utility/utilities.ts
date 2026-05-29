@@ -17,6 +17,14 @@ export function setIfUndefined<T>(map: Record<string, T>, key: string, createIns
 	}
 }
 
+export function cleanRoomCode(roomCode: string) {
+	return roomCode.toUpperCase().replaceAll(/[^A-Z0-9]/g, "");
+}
+
+export function getRoomCodeFromUrl(url: string) {
+	return url.match(/\/room\/(?<code>.*)$/)?.groups?.["code"];
+}
+
 export function getLanguageMapping(lang: string) {
 	switch (lang) {
 		case "en":

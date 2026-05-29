@@ -34,6 +34,7 @@ import java.util.UUID;
 public final class RoomViewAssembler {
 
 	private final PlayerRepository playerRepository;
+	private final RoomPlayerLimitsResolver roomPlayerLimitsResolver;
 
 	/**
 	 * Assemble a {@link RoomView} from a {@link Room}, resolving each member's profile
@@ -43,6 +44,7 @@ public final class RoomViewAssembler {
 	 * @return the expanded room view
 	 */
 	public Mono<RoomView> assemble(Room room) {
+		final RoomPlayerLimitsResolver.AbsolutePlayerLimits absolutePlayerLimits = roomPlayerLimitsResolver.absoluteLimits(room.gameSettings());
 		return Flux.fromIterable(room.players())
 			.concatMap(publicId -> playerRepository.findById(publicId).map(player -> toPlayerView(player, room.createdAt())).defaultIfEmpty(missingPlayerView(publicId, room.createdAt())))
 			.collectList().map(playerViews -> new RoomView(
@@ -52,6 +54,8 @@ public final class RoomViewAssembler {
 				playerViews,
 				room.minPlayers(),
 				room.maxPlayers(),
+				absolutePlayerLimits.absoluteMinPlayers(),
+				absolutePlayerLimits.absoluteMaxPlayers(),
 				room.gameSettings(),
 				room.isPrivate(),
 				room.state(),
@@ -66,6 +70,14 @@ public final class RoomViewAssembler {
 	 */
 	public PlayerView toPlayerView(Player player, Instant joinedAtFallback) {
 		return new PlayerView(player.publicId(), player.name(), player.avatar(), player.status(), joinedAtFallback);
+	}
+
+	/**
+	 * Convert a {@link Player} to a public {@link PlayerView} outside the context of a room.
+	 * The player's {@link Player#lastActiveAt()} is reused as the best available timestamp.
+	 */
+	public PlayerView toPlayerView(Player player) {
+		return toPlayerView(player, player.lastActiveAt());
 	}
 
 	/**

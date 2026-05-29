@@ -1,0 +1,24 @@
+<p-dialog *transloco="let t" modal [(visible)]="dialogVisible" dismissableMask [style]="{ maxWidth: '80%', maxHeight: '80%', width: '33rem' }">
+	<div class="column gap" [formGroup]="formGroup">
+		<p-float-label class="input" variant="in">
+			<input pInputText id="roomName" formControlName="name" autocomplete="off" spellcheck="false" fluid/>
+			<label for="roomName">{{ t('common.labels.roomName') }}</label>
+		</p-float-label>
+
+		<div class="column gap-small">
+			<div>{{ t('room.playerRangeTooltip') }}</div>
+			<div class="row gap center">
+				<div>{{ getMinPlayers() }}</div>
+				<p-slider class="spacing" formControlName="players" range [min]="room().absoluteMinPlayers" [max]="room().absoluteMaxPlayers" [step]="1"/>
+				<div>{{ getMaxPlayers() }}</div>
+			</div>
+		</div>
+
+		<div class="row gap-small center">
+			<p-toggleswitch inputId="privateRoom" formControlName="isPrivate"/>
+			<label for="privateRoom">{{ t('room.privateRoom') }}</label>
+		</div>
+
+		<app-button-with-loading [label]="t('common.actions.save')" icon="pi pi-save" [text]="false" [clickAction]="save()" (clickSuccess)="dialogVisible.set(false)"/>
+	</div>
+</p-dialog>

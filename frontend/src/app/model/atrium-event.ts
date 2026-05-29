@@ -13,6 +13,8 @@ export interface RoomView {
 	players: PlayerView[];
 	minPlayers: number;
 	maxPlayers: number;
+	absoluteMinPlayers: number;
+	absoluteMaxPlayers: number;
 	gameSettings: Record<string, unknown>;
 	isPrivate: boolean;
 	state: "LOBBY" | "IN_GAME";

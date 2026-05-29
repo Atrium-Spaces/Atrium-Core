@@ -45,6 +45,9 @@ or as `--atrium.core....` command-line arguments. See
 | `websocket-path`           | `/api/atrium/ws` | WebSocket mount point.                                      |
 | `cors-allowed-origins`     | `["*"]`          | CORS whitelist for the lobby endpoints.                     |
 
+The backend fails fast during startup if `absolute-min-players` is below `1` or if
+`absolute-max-players` is below `absolute-min-players`.
+
 ### Example — production overrides
 
 ```yaml

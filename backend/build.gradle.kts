@@ -20,9 +20,6 @@ dependencies {
 	implementation("org.jspecify:jspecify:+")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("io.projectreactor:reactor-test")
-	testImplementation("org.junit.jupiter:junit-jupiter-api:+")
-	testImplementation("org.junit.platform:junit-platform-launcher:+")
-	testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:+")
 }
 
 java {

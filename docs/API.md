@@ -68,7 +68,10 @@ player is in a room, the new profile is broadcast as a `playerUpdated` event.
 }
 ```
 
-**Response 200** — no body.
+**Response 200** — `PlayerView`.
+
+The response echoes the server-normalised profile, so the client can observe any
+truncation or other sanitisation immediately.
 
 ### GET `/api/atrium/rooms?limit=50`
 
@@ -115,15 +118,15 @@ Create a new room. The caller is automatically the host.
 ```
 
 `name`, `minPlayers`, `maxPlayers`, and `gameSettings` are all
-optional (defaults from `AtriumProperties` and/or `GameSettings` absolute
-bounds). The server validates that the values fall within the game's absolute bounds;
-requests outside the allowed range receive a `400 Bad Request`.
+optional. Missing player counts fall back to the configured defaults. If the caller
+supplies `maxPlayers < minPlayers`, the server swaps the two values first, then clamps
+both values into the room's effective absolute bounds (global Atrium bounds plus any
+`GameSettings` overrides).
 
 **Response 201** — `RoomView`.
 
 **Errors**
 
-- `400` minPlayers or maxPlayers outside the absolute bounds defined by the game settings.
 - `409` room code collision during creation.
 
 ### POST `/api/atrium/rooms/{code}/join`
@@ -212,6 +215,11 @@ Host-only. Only allowed in `LOBBY` state. Any field left out is unchanged.
 	"isPrivate": true
 }
 ```
+
+`minPlayers` and `maxPlayers` follow the same normalisation rule as room creation:
+the server swaps reversed values and clamps both values into the room's effective
+absolute bounds. The update is still rejected if the resulting `maxPlayers` would be
+below the room's current member count.
 
 **Response 200** — updated `RoomView`. A `settingsChanged` event is broadcast.
 
@@ -334,6 +342,8 @@ interface RoomView {
 	players: PlayerView[];
 	minPlayers: number;
 	maxPlayers: number;
+	absoluteMinPlayers: number;
+	absoluteMaxPlayers: number;
 	gameSettings: { type: string; /* ...game-specific fields... */ };
 	isPrivate: boolean;
 	state: "LOBBY" | "IN_GAME";

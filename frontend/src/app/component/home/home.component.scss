@@ -1,8 +1,17 @@
+h1 {
+	text-align: center;
+}
+
 .profile {
 	padding: 2rem;
 }
 
 .input {
-	max-width: 16rem;
+	max-width: 24rem;
 	width: 100%;
+}
+
+.muted {
+	color: var(--p-text-muted-color);
+	font-size: 0.8rem;
 }

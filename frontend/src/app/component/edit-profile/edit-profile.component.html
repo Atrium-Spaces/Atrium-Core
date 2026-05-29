@@ -1,11 +1,11 @@
 <p-dialog *transloco="let t" modal [(visible)]="dialogVisible" dismissableMask [style]="{ maxWidth: '80%', maxHeight: '80%', width: '33rem' }">
 	<div #wrapper class="column gap center">
-		<app-profile/>
+		<app-profile [large]="true"/>
 
 		<div class="column gap-small center">
 			<p-float-label variant="in" class="input">
 				<input pInputText id="name" [(ngModel)]="nameInput" autocomplete="off" spellcheck="false" fluid/>
-				<label for="name">{{ t('input.name') }}</label>
+				<label for="name">{{ t('common.labels.name') }}</label>
 			</p-float-label>
 
 			<p-iconfield class="input">

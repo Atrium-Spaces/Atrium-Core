@@ -1,4 +1,5 @@
-import {ChangeDetectionStrategy, Component, inject, input} from "@angular/core";
+import {ChangeDetectionStrategy, Component, DestroyRef, inject} from "@angular/core";
+import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 
 import {TranslocoDirective, TranslocoService} from "@jsverse/transloco";
 import {MenuItem, PrimeIcons} from "primeng/api";
@@ -22,10 +23,9 @@ import {getLanguageMapping, setCookie} from "../../utility/utilities";
 	styleUrl: "./header.component.scss",
 })
 export class HeaderComponent {
+	private readonly destroyRef = inject(DestroyRef);
 	private readonly themeService = inject(ThemeService);
 	private readonly translocoService = inject(TranslocoService);
-
-	readonly title = input.required<string>();
 
 	readonly languageMenuItems: MenuItem[] = this.translocoService.getAvailableLangs().map(langDefinition => {
 		const lang = langDefinition.toString();
@@ -41,8 +41,8 @@ export class HeaderComponent {
 	});
 
 	constructor() {
-		this.translocoService.events$.subscribe(events => {
-			if (events.type === "translationLoadSuccess" || events.type === "langChanged") {
+		this.translocoService.events$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
+			if (event.type === "translationLoadSuccess" || event.type === "langChanged") {
 				this.updateMenuItems();
 			}
 		});
@@ -59,7 +59,7 @@ export class HeaderComponent {
 	}
 
 	getThemeTranslationKey() {
-		return this.themeService.darkTheme() ? "menu.lightTheme" : "menu.darkTheme";
+		return this.themeService.darkTheme() ? "header.lightTheme" : "header.darkTheme";
 	}
 
 	private updateMenuItems() {

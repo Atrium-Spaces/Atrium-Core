@@ -1,3 +1,59 @@
 <div *transloco="let t" class="column gap">
-	<app-header title=""/>
+	<app-header/>
+
+	<div class="column gap center">
+		<h1>{{ room().name ?? t('room.untitledRoom', {name: getHostName()}) }}</h1>
+
+		<div class="row center">
+			<div class="row gap-small center" [pTooltip]="t('room.playerRangeTooltip')" tooltipPosition="bottom">
+				<i class="pi pi-user"></i>
+				@if (room().minPlayers === room().maxPlayers) {
+					<div>{{ room().minPlayers }}</div>
+				} @else {
+					<div>{{ room().minPlayers }}–{{ room().maxPlayers }}</div>
+				}
+			</div>
+			<p-divider layout="vertical"/>
+			<div [pTooltip]="t('common.labels.roomCode')" tooltipPosition="bottom">{{ roomCode }}</div>
+			<p-divider layout="vertical"/>
+			<i [class]="room().isPrivate ? 'pi pi-lock' : 'pi pi-globe'" [pTooltip]="t(room().isPrivate ? 'room.privateRoom' : 'room.publicRoom')" tooltipPosition="bottom"></i>
+		</div>
+		<div></div>
+
+		<div class="row gap-small center">
+			<p-toggleswitch inputId="joinRoom" [ngModel]="joinedRoom()" (ngModelChange)="onJoinRoomChanged($event)"/>
+			<label for="joinRoom">{{ t('common.actions.joinRoom') }}</label>
+		</div>
+
+		@if (isHost()) {
+			<div class="row gap-small center wrap">
+				@if (room().state === 'LOBBY') {
+					<app-button-with-loading [label]="t('common.actions.startGame')" icon="pi pi-play" [text]="false" [clickAction]="startGame()" [disabled]="room().players.length < room().minPlayers"/>
+					<p-button [label]="t('common.actions.roomSettings')" icon="pi pi-cog" text (onClick)="dialogVisible.set(true)"/>
+				} @else {
+					<app-button-with-loading [label]="t('common.actions.stopGame')" icon="pi pi-stop" [text]="false" [clickAction]="stopGame()"/>
+				}
+				<app-button-with-loading [label]="t('common.actions.deleteRoom')" icon="pi pi-trash" [clickAction]="deleteRoom()" (clickSuccess)="navigateToHome()" severity="danger"/>
+			</div>
+		}
+
+		<p-panel class="input" [header]="t('room.playersTitle', {count: room().players.length})">
+			<div class="column gap-small">
+				<div></div>
+				@for (player of room().players; track $index) {
+					<div class="row gap-small center">
+						<app-profile class="spacing" [name]="player.name" [avatar]="player.avatar" [showName]="true" [horizontal]="true"/>
+						@if (player.status === "DISCONNECTED") {
+							<i class="pi pi-exclamation-triangle" [pTooltip]="t('room.disconnected')" tooltipPosition="left"></i>
+						}
+						@if (isHost() && $index > 0) {
+							<p-button icon="pi pi-times" rounded text (onClick)="kickPlayer(player.publicId)" severity="secondary" [pTooltip]="t('common.actions.kickPlayer')" tooltipPosition="left"/>
+						}
+					</div>
+				}
+			</div>
+		</p-panel>
+	</div>
 </div>
+
+<app-edit-settings [(dialogVisible)]="dialogVisible" [room]="room()"/>

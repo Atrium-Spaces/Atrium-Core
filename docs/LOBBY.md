@@ -31,7 +31,7 @@ pruned by the scheduled sweep.
 Two tabs:
 
 - **Join** — text box for `name` + `avatar` (writes back to cookies and `POST
-  /profile`), and a text box for a room code with a "Join" button (`POST
+  /profile`, which responds with the server-normalised `PlayerView`), and a text box for a room code with a "Join" button (`POST
   /rooms/{code}/join`). A "Create room" button calls `POST /rooms`.
 - **Browse** — `GET /rooms` for the public-room list. Each row shows current
   player count, game kind (`gameSettings.gameKind`), state. Buttons:
@@ -60,6 +60,11 @@ are deltas.
 | Delete game button              | host       | host                  |
 
 Spectators (URL visitors who aren't members) see everything read-only.
+
+The room payload exposes both the currently selected `minPlayers` / `maxPlayers` and
+the effective `absoluteMinPlayers` / `absoluteMaxPlayers` bounds for that room, so a UI
+can render both the active setting and the allowed range without hard-coding global
+configuration.
 
 ### 3.2 In-game UI
 

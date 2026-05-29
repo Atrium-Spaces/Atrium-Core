@@ -1,16 +1,41 @@
 {
-	"title": {
+	"common": {
+		"actions": {
+			"createRoom": "Create New Room",
+			"deleteRoom": "Delete Room",
+			"joinRoom": "Join Room",
+			"kickPlayer": "Kick Player",
+			"roomSettings": "Settings",
+			"save": "Save",
+			"startGame": "Start Game",
+			"stopGame": "Stop Game"
+		},
+		"labels": {
+			"name": "Name",
+			"roomCode": "Room Code",
+			"roomName": "Room Name"
+		},
+		"states": {
+			"inGame": "In Game",
+			"lobby": "Lobby"
+		}
+	},
+	"header": {
+		"darkTheme": "Dark Theme",
+		"language": "Language",
+		"lightTheme": "Light Theme"
+	},
+	"home": {
+		"noPublicRooms": "No public rooms right now.",
+		"publicRooms": "Public Rooms",
 		"welcome": "Welcome to Atrium."
 	},
-	"menu": {
-		"language": "Language",
-		"lightTheme": "Light Theme",
-		"darkTheme": "Dark Theme"
-	},
-	"input": {
-		"name": "Name",
-		"roomCode": "Room Code",
-		"joinRoom": "Join Room",
-		"createRoom": "Create New Room"
+	"room": {
+		"disconnected": "Disconnected",
+		"playerRangeTooltip": "Player Range",
+		"playersTitle": "Players ({{count}})",
+		"privateRoom": "Private Room",
+		"publicRoom": "Public Room",
+		"untitledRoom": "A Room Hosted By {{name}}"
 	}
 }

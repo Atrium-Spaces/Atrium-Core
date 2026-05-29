@@ -41,7 +41,8 @@ public final class LobbyCleanupService {
 
 		cleanupInactiveRooms(inactiveCutoff)
 			.then(cleanupInactiveRoomlessPlayers(inactiveCutoff))
-			.subscribe();
+			.doOnError(error -> log.error("Lobby cleanup sweep failed", error))
+			.block();
 	}
 
 	private Mono<Void> cleanupInactiveRooms(Instant inactiveCutoff) {

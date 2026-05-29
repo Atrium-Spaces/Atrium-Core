@@ -1,5 +1,5 @@
-<div class="column gap center profile">
-	<p-avatar size="xlarge" [icon]="emoji() === undefined ? 'pi pi-user' : undefined" [label]="emoji()" shape="circle"/>
+<div [class]="(horizontal() ? 'row' : 'column') + ' ' + (large() ? 'gap' : 'gap-small') + ' center profile'">
+	<p-avatar [size]="large() ? 'xlarge' : 'normal'" [icon]="emoji() === undefined ? 'pi pi-user' : undefined" [label]="emoji()" shape="circle"/>
 	@if (showName()) {
 		<div>{{ getName() }}</div>
 	}

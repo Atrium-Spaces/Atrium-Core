@@ -177,7 +177,7 @@ public class RoomRepository {
 	 * @return a flux of rooms
 	 */
 	public Flux<Room> listPublic(int limit) {
-		return stringTemplate.opsForZSet().reverseRange(AtriumConstants.PUBLIC_ROOMS_INDEX, Range.closed(0L, (long) limit - 1)).flatMap(this::findByCode);
+		return stringTemplate.opsForZSet().reverseRange(AtriumConstants.PUBLIC_ROOMS_INDEX, Range.closed(0L, (long) limit - 1)).concatMap(this::findByCode);
 	}
 
 	/**
@@ -197,7 +197,7 @@ public class RoomRepository {
 	 * @return a flux of all rooms
 	 */
 	public Flux<Room> findAll() {
-		return stringTemplate.opsForZSet().range(AtriumConstants.ALL_ROOMS_INDEX, Range.unbounded()).flatMap(this::findByCode);
+		return stringTemplate.opsForZSet().range(AtriumConstants.ALL_ROOMS_INDEX, Range.unbounded()).concatMap(this::findByCode);
 	}
 
 	private Mono<Long> saveWithExpectedVersion(Room room, long expectedVersion) {

@@ -1,4 +1,4 @@
-import {computed, effect, Injectable, signal} from "@angular/core";
+import {effect, Injectable, signal} from "@angular/core";
 import {getCookie, setCookie} from "../utility/utilities";
 
 @Injectable({providedIn: "root"})
@@ -7,7 +7,6 @@ export class AuthenticationService {
 	readonly secretId = signal<string>(getCookie("secret_id"));
 	readonly name = signal<string>("");
 	readonly avatar = signal<string>("");
-	readonly isAuthenticated = computed(() => !!this.publicId() && !!this.secretId());
 
 	constructor() {
 		effect(() => AuthenticationService.setCookieIfValid("public_id", this.publicId()));

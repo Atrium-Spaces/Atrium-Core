@@ -83,6 +83,11 @@ Stored at `atrium:room:{code}` as JSON. Indexed in two sorted sets:
 - `atrium:rooms:all`     — every room, scored by `lastActivityAt` (cleanup sweep).
 - `atrium:rooms:public`  — only `!isPrivate` rooms (home-page listing).
 
+The room entity stores the currently effective `minPlayers` and `maxPlayers`. The API
+surface additionally exposes `absoluteMinPlayers` and `absoluteMaxPlayers` on
+`RoomView`, computed from the global Atrium properties plus any `GameSettings`
+override for that room.
+
 ### 4.2 `Player`
 
 ```java
@@ -130,7 +135,8 @@ client ──REST──▶ AtriumController ──▶ RoomService / PlayerServic
 
 1. The browser sends a write through REST (`POST /api/atrium/rooms/{code}/join`).
 2. `RoomService` authenticates the (publicId, secretId) pair, re-reads the room from
-   Redis (source of truth), mutates, and writes back.
+   Redis (source of truth), normalises any requested player-count changes by swapping
+   reversed values and clamping them into the room's absolute bounds, then writes back.
 3. After the write commits, it `PUBLISH`es a `RoomEvent` on `atrium:events:{code}` and,
    when the change affects public-room listing state, a `HomeEvent` on
    `atrium:events:home`.
@@ -175,6 +181,19 @@ Each sweep performs:
 3. Delete roomless players whose `lastActiveAt` is older than the threshold.
 
 No disconnect-grace auto-leave timer is performed.
+
+## 8.1 Player-count bounds
+
+Global room-size bounds are configured once through `atrium.core.absolute-min-players`
+and `atrium.core.absolute-max-players`. The application fails fast at startup when
+those values are impossible (`absolute-min-players < 1` or
+`absolute-max-players < absolute-min-players`).
+
+At runtime, a concrete `GameSettings` subtype may override those bounds for a given
+room. Room creation and room-settings updates never reject a request merely because the
+client supplied an out-of-range pair: the server first swaps the values if they are
+reversed, then clamps both values into the room's effective absolute bounds. The one
+remaining rejection is lowering `maxPlayers` below the room's current member count.
 
 A known limitation: the `PlayerView.joinedAt` field uses the room's creation time
 as a fallback because per-player join timestamps are not tracked in the current

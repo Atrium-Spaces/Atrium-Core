@@ -53,7 +53,7 @@ public class PlayerService {
 	public Mono<IdentityResult> ensureIdentity(@Nullable UUID publicId, @Nullable UUID secretId) {
 		if (publicId == null || secretId == null) {
 			log.debug("No identity provided; minting fresh player identity");
-			return Mono.just(mintFresh());
+			return mintFresh();
 		} else {
 			log.debug("Ensuring identity for player {}", publicId);
 			return playerRepository.findById(publicId)
@@ -62,23 +62,22 @@ public class PlayerService {
 						return Mono.just(new IdentityResult(storedPlayer, false));
 					} else {
 						log.debug("Secret id mismatch for public id {} — allocating fresh identity", publicId);
-						return Mono.just(mintFresh());
+						return mintFresh();
 					}
 				})
-				.switchIfEmpty(Mono.fromSupplier(() -> {
+				.switchIfEmpty(mintFresh().map(identityResult -> {
 					log.debug("No player found for public id {}; minting fresh identity", publicId);
-					return mintFresh();
-				}))
-				.flatMap(result -> result.freshIdentity() ? playerRepository.save(result.player()).map(saved -> new IdentityResult(saved, true)) : Mono.just(result));
+					return identityResult;
+				}));
 		}
 	}
 
-	private IdentityResult mintFresh() {
+	private Mono<IdentityResult> mintFresh() {
 		final UUID publicId = UUID.randomUUID();
 		final UUID secretId = UUID.randomUUID();
 		final String name = cleanName("Player " + publicId.toString().replaceAll("\\W", "").substring(0, 6).toUpperCase());
 		final String avatar = cleanAvatar(null);
-		return new IdentityResult(new Player(publicId, secretId, name, avatar, List.of(), PlayerStatus.ACTIVE, Instant.now()), true);
+		return playerRepository.save(new Player(publicId, secretId, name, avatar, List.of(), PlayerStatus.ACTIVE, Instant.now())).map(player -> new IdentityResult(player, true));
 	}
 
 	/**
@@ -135,7 +134,7 @@ public class PlayerService {
 				}
 
 				return Flux.fromIterable(cachedCodes)
-					.flatMap(code -> roomRepository.findByCode(code).filter(room -> room.contains(publicId)))
+					.concatMap(code -> roomRepository.findByCode(code).filter(room -> room.contains(publicId)))
 					.collectList()
 					.flatMapMany(validRooms -> {
 						if (validRooms.size() == cachedCodes.size()) {
