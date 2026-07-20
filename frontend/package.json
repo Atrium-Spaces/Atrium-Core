@@ -20,7 +20,7 @@
 		"@angular/forms": "^22.0.7",
 		"@angular/platform-browser": "^22.0.7",
 		"@angular/router": "^22.0.7",
-		"@fontsource/noto-color-emoji": "^5.2.12",
+		"@fontsource/noto-color-emoji": "^5.3.0",
 		"@jsverse/transloco": "^8.4.0",
 		"@primeuix/themes": "^3.0.0",
 		"emojibase-data": "^17.0.0",
